@@ -23,6 +23,8 @@ import type { ProxyHook, HookContext } from "./proxy.js";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import type { AuditRecord, Decision } from "./types.js";
 import type { PolicyEngine } from "./policy/engine.js";
+import type { Approver } from "./approval/types.js";
+import { scanToolResult } from "./detectors/scan.js";
 
 /** Where completed records go. `AuditLog.append` fits this shape. */
 export type AuditSink = (record: AuditRecord) => void;
@@ -35,6 +37,7 @@ interface PendingCall {
   decision: Decision; // "allow" | "ask" (deny never pends — no response expected)
   rule?: string;
   reason?: string;
+  approved?: boolean; // set for `ask` calls once the human decides
 }
 
 export interface AuditInterceptorOptions {
@@ -43,6 +46,10 @@ export interface AuditInterceptorOptions {
   server: string;
   /** Optional policy. Without one, every call is allowed. */
   policy?: PolicyEngine;
+  /** Optional approver for `ask` decisions. Without one, `ask` behaves as allow. */
+  approver?: Approver;
+  /** Redact detected secrets from results before the agent sees them (default true). */
+  redactSecrets?: boolean;
   /** Optional notification when a call is decided (for stderr UX). */
   onDecision?: (record: AuditRecord) => void;
   /** Injectable clock for testing; defaults to Date.now. */
@@ -54,6 +61,8 @@ export class AuditInterceptor {
   private readonly sink: AuditSink;
   private readonly server: string;
   private readonly policy?: PolicyEngine;
+  private readonly approver?: Approver;
+  private readonly redactSecrets: boolean;
   private readonly onDecision?: (record: AuditRecord) => void;
   private readonly now: () => number;
 
@@ -61,22 +70,23 @@ export class AuditInterceptor {
     this.sink = options.sink;
     this.server = options.server;
     this.policy = options.policy;
+    this.approver = options.approver;
+    this.redactSecrets = options.redactSecrets ?? true;
     this.onDecision = options.onDecision;
     this.now = options.now ?? (() => Date.now());
   }
 
-  /** The hook to register on the proxy. */
-  readonly hook: ProxyHook = (message, direction, ctx) => {
+  /** The hook to register on the proxy. Async so `ask` can await a human. */
+  readonly hook: ProxyHook = async (message, direction, ctx) => {
     if (direction === "c2s") {
-      const forward = this.onOutbound(message, ctx);
+      const forward = await this.onOutbound(message, ctx);
       return forward ? message : null;
     }
-    this.onInbound(message);
-    return message;
+    return this.onInbound(message); // may be redacted
   };
 
   /** Returns true if the message should be forwarded to the server. */
-  private onOutbound(message: unknown, ctx: HookContext): boolean {
+  private async onOutbound(message: unknown, ctx: HookContext): Promise<boolean> {
     const call = asToolCallRequest(message);
     if (!call) return true; // not a tool call — pass through untouched
 
@@ -88,7 +98,7 @@ export class AuditInterceptor {
       // Block: answer the client directly with a tool error so the agent sees
       // it was denied and can adapt (DESIGN D6), and never touch the server.
       ctx.replyToClient(blockedResult(call.id, verdict.rule, verdict.reason));
-      const record: AuditRecord = {
+      this.emit({
         ts: new Date(this.now()).toISOString(),
         server: this.server,
         tool: call.tool,
@@ -98,14 +108,43 @@ export class AuditInterceptor {
         reason: verdict.reason,
         findings: [],
         durationMs: 0,
-      };
-      this.sink(record);
-      this.onDecision?.(record);
+      });
       return false; // do not forward
     }
 
-    // allow or ask: remember it and let it through. The record is written when
-    // the response comes back.
+    // `ask`: block on a human decision if we have an approver. Without one,
+    // `ask` degrades to allow-and-record (M3 behavior).
+    let approved: boolean | undefined;
+    if (verdict.decision === "ask" && this.approver) {
+      approved = await this.approver.request({
+        server: this.server,
+        tool: call.tool,
+        args: call.args,
+        rule: verdict.rule,
+        reason: verdict.reason,
+      });
+      if (!approved) {
+        ctx.replyToClient(
+          blockedResult(call.id, verdict.rule, verdict.reason ?? "Denied by operator"),
+        );
+        this.emit({
+          ts: new Date(this.now()).toISOString(),
+          server: this.server,
+          tool: call.tool,
+          args: call.args,
+          decision: "ask",
+          approved: false,
+          rule: verdict.rule,
+          reason: verdict.reason,
+          findings: [],
+          durationMs: 0,
+        });
+        return false; // human denied
+      }
+    }
+
+    // allow, or approved ask: remember it and let it through. The record is
+    // written when the response comes back (so it includes result findings).
     this.pending.set(idKey(call.id), {
       tool: call.tool,
       args: call.args,
@@ -114,19 +153,41 @@ export class AuditInterceptor {
       decision: verdict.decision,
       rule: verdict.rule,
       reason: verdict.reason,
+      approved,
     });
     return true;
   }
 
-  private onInbound(message: unknown): void {
+  /** Handle a server→client message; may return a redacted copy. */
+  private onInbound(message: unknown): JSONRPCMessage {
     const resp = asResponse(message);
-    if (!resp) return;
+    if (!resp) return message as JSONRPCMessage;
     const key = idKey(resp.id);
     const call = this.pending.get(key);
-    if (!call) return; // a response to something that wasn't a tracked tool call
+    if (!call) return message as JSONRPCMessage; // not a tracked tool call
     this.pending.delete(key);
 
-    const record: AuditRecord = {
+    let outMessage = message as JSONRPCMessage;
+    let findings: AuditRecord["findings"] = [];
+    // What we PREVIEW/persist in the audit log. Always a redacted view when
+    // secrets are present — the on-disk log must never contain raw secrets,
+    // regardless of the --no-redact flag (which only affects the agent's copy).
+    let previewSource: unknown = resp.result;
+
+    if (!resp.isError) {
+      // Always compute the redacted view; use it for the log and (unless
+      // --no-redact) for what the agent receives.
+      const scan = scanToolResult(resp.result, true);
+      findings = scan.findings.map(maskFinding);
+      if (scan.findings.length > 0) {
+        previewSource = scan.redacted;
+        if (this.redactSecrets) {
+          outMessage = { ...(message as object), result: scan.redacted } as JSONRPCMessage;
+        }
+      }
+    }
+
+    this.emit({
       ts: call.ts,
       server: this.server,
       tool: call.tool,
@@ -134,12 +195,17 @@ export class AuditInterceptor {
       decision: call.decision,
       rule: call.rule,
       reason: call.reason,
-      findings: [],
+      approved: call.approved,
+      findings,
       durationMs: this.now() - call.startedAt,
-      resultPreview: resp.isError ? undefined : summarize(resp.result),
+      resultPreview: resp.isError ? undefined : summarize(previewSource),
       isError: resp.isError,
       error: resp.isError ? summarize(resp.error) : undefined,
-    };
+    });
+    return outMessage;
+  }
+
+  private emit(record: AuditRecord): void {
     this.sink(record);
     this.onDecision?.(record);
   }
@@ -168,6 +234,19 @@ function blockedResult(id: JsonRpcId, rule?: string, reason?: string): JSONRPCMe
       isError: true,
     },
   } as JSONRPCMessage;
+}
+
+/**
+ * Mask a finding's raw secret before it's persisted to the audit log. Keeps
+ * enough to recognize *which* secret (first 3 + last 2 chars) but never the
+ * whole value — the on-disk log must not be a secret store. The raw `match` is
+ * used for redaction *before* this, so redaction is unaffected.
+ */
+function maskFinding(f: AuditRecord["findings"][number]): AuditRecord["findings"][number] {
+  if (!f.match) return f;
+  const m = f.match;
+  const masked = m.length >= 8 ? `${m.slice(0, 3)}…${m.slice(-2)}` : "•••";
+  return { ...f, match: masked };
 }
 
 // ── Message shape helpers ────────────────────────────────────────────────────

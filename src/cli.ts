@@ -11,6 +11,7 @@ import { Proxy, type ProxyHook } from "./proxy.js";
 import { AuditInterceptor } from "./interceptor.js";
 import { AuditLog, defaultAuditPath } from "./audit/log.js";
 import { PolicyEngine } from "./policy/engine.js";
+import { ApprovalServer } from "./approval/server.js";
 import { logStderr, describeMessage } from "./log.js";
 import type { AuditRecord } from "./types.js";
 
@@ -28,7 +29,13 @@ Usage:
           npx -y @modelcontextprotocol/server-filesystem /tmp
 
       --policy <file>  YAML policy of allow/deny/ask rules (default: allow all)
+      --no-redact      don't redact detected secrets from results (warn only)
+      --no-open        don't auto-open the browser for approvals (headless)
       --verbose        also log every JSON-RPC message to stderr (passthrough)
+
+      When the policy says "ask", a local web page opens for you to approve or
+      deny the call. Detected secrets in results are redacted before the agent
+      sees them (unless --no-redact).
 
   mcp-firewall log [--file <path>]
       Pretty-print the audit log (default: .mcp-firewall/audit.jsonl).
@@ -65,6 +72,8 @@ function main(argv: string[]): void {
  */
 async function runWrap(args: string[]): Promise<void> {
   const verbose = args.includes("--verbose");
+  const redactSecrets = !args.includes("--no-redact");
+  const autoOpen = !args.includes("--no-open");
   const policyFlag = args.indexOf("--policy");
   const policyPath = policyFlag !== -1 ? args[policyFlag + 1] : undefined;
   const sepIndex = args.indexOf("--");
@@ -91,18 +100,36 @@ async function runWrap(args: string[]): Promise<void> {
     }
   }
 
+  // If we have a policy (which may contain `ask` rules), stand up the approval
+  // web UI so a human can approve/deny those calls.
+  let approval: ApprovalServer | undefined;
+  if (policy) {
+    approval = new ApprovalServer({ autoOpen });
+    await approval.start();
+  }
+
   // Audit + policy interceptor: enforce the policy, record every call, and
   // print a concise one-liner to stderr per decision.
   const audit = new AuditLog(defaultAuditPath());
   const interceptor = new AuditInterceptor({
     server: serverName,
     policy,
+    approver: approval,
+    redactSecrets,
     sink: (record) => void audit.append(record),
     onDecision: (record) => {
       const status = record.isError ? "error" : `${record.durationMs}ms`;
-      const tag = record.decision === "deny" ? "BLOCKED" : record.decision.toUpperCase();
+      const tag =
+        record.decision === "deny"
+          ? "BLOCKED"
+          : record.decision === "ask"
+            ? record.approved
+              ? "APPROVED"
+              : "DENIED"
+            : record.decision.toUpperCase();
       const ruleText = record.rule ? ` [${record.rule}]` : "";
-      logStderr(`${tag} ${record.tool} (${status})${ruleText}`);
+      const flags = record.findings.length > 0 ? ` ⚠ ${record.findings.length} finding(s)` : "";
+      logStderr(`${tag} ${record.tool} (${status})${ruleText}${flags}`);
     },
   });
 
@@ -121,6 +148,7 @@ async function runWrap(args: string[]): Promise<void> {
     hooks,
     onClose: () => {
       logStderr("upstream closed; shutting down");
+      void approval?.stop();
       process.exit(0);
     },
   });
@@ -133,6 +161,8 @@ async function runWrap(args: string[]): Promise<void> {
 
   logStderr(`wrapping: ${serverName}`);
   logStderr(`policy: ${policyPath ?? "(none — allowing all)"}`);
+  logStderr(`redaction: ${redactSecrets ? "on" : "off"}`);
+  if (approval) logStderr(`approvals: ${approval.url}`);
   logStderr(`audit log: ${defaultAuditPath()}`);
 }
 

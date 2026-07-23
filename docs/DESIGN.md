@@ -58,8 +58,17 @@ Each entry: the decision, the reasoning, and the alternatives we rejected. When 
 
 **Consequence / gotcha:** `StdioServerTransport` only listens for stdin `data`/`error`, so it never fires `onclose` on EOF. The proxy adds its own `process.stdin` end/close handlers to shut down when the client disconnects. (Recorded here so it isn't "cleaned up" later as dead code.)
 
+## D9. The audit log must never store raw secrets (M4)
+
+**Decision:** The on-disk audit log (`.mcp-firewall/audit.jsonl`) never contains a raw detected secret. `resultPreview` is computed from the *redacted* result, and each `Finding.match` is masked (`maskFinding`: `AKI…LE`) before the record is written. This holds even under `--no-redact`.
+
+**Why:** A security tool that writes the very secrets it detects into a plaintext log on disk is a leak vector, not a mitigation. Discovered during M4 (the first draft previewed the raw key). `--no-redact` controls only what the *agent* sees — the log is redacted unconditionally. The interceptor still uses the raw match internally to *perform* redaction; masking happens only at the persistence boundary.
+
+## Resolved questions
+
+- **OQ1 (resolved M4): local web UI.** Under stdio the MCP client owns the terminal, so we can't prompt there. `ApprovalServer` (`src/approval/server.ts`) serves a self-contained page on a random localhost port, auto-opens the browser on the first pending approval (`--no-open` to disable), and auto-denies on timeout so the agent never hangs. Plain `node:http`, no web framework (minimal attack surface).
+- **OQ2 (resolved M4): redact-and-annotate, on by default.** Detected secrets are replaced with `[REDACTED:<detector>]` before the agent sees the result. `--no-redact` downgrades to warn-only (findings still recorded). See also D9 for the audit-log side.
+
 ## Open questions (decide as we build)
 
-- **OQ1.** How does the `ask` approval prompt reach the human when the client owns the terminal (stdio)? Options: a separate TTY, a desktop notification, a local web UI on a port. — *Leaning: local web UI, decided at M4.*
-- **OQ2.** Redaction — when a secret is detected in a result, do we redact before the agent sees it, only warn, or make it policy-configurable? — *Leaning: policy-configurable, default redact-and-annotate.*
 - **OQ3.** Multiple upstream servers behind one proxy, or one proxy per server? — *Leaning: one-per-server for v0.1 (simpler), multiplex later.*

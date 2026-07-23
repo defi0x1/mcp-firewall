@@ -45,6 +45,14 @@ pnpm build      # tsc → dist/
 
 ## Current state
 
-M0–M3 complete (21 tests passing). The proxy (`src/proxy.ts`) transparently bridges client↔server and exposes a `hooks` array + `HookContext` (`replyToClient`). The audit+policy interceptor (`src/interceptor.ts`) records every `tools/call` to `.mcp-firewall/audit.jsonl` and enforces YAML policies (`src/policy/engine.ts`): `deny` blocks the call and returns a synthetic MCP error to the agent. `mcp-firewall wrap --policy <file> -- <server>` and `mcp-firewall log`.
+M0–M4 complete (44 tests passing). Full pipeline works:
+- `src/proxy.ts` — transparent client↔server bridge; `hooks` array + `HookContext` (`replyToClient`). Hooks may be async.
+- `src/interceptor.ts` — audit + policy + detectors, correlating `tools/call` request↔response by id.
+- `src/policy/engine.ts` — YAML allow/deny/ask rules (3 matchers).
+- `src/detectors/` — pure secret detectors + `scanToolResult` (findings + redacted copy).
+- `src/approval/server.ts` — local web UI for `ask` approvals (auto-opens browser, timeout auto-deny).
+- Audit log (`.mcp-firewall/audit.jsonl`) never stores raw secrets (D9).
 
-**Next: M4 — secrets detector + approval flow.** Two parts: (1) a pure secrets detector `(text) => Finding[]` run on tool *results*, with redaction; (2) make `ask` policies actually block until a human approves (resolve OQ1 in DESIGN.md first — how the prompt reaches the human). Read `docs/ROADMAP.md` M3's "Implementation notes": `ask` is currently recorded-but-forwarded, and the `HookContext.replyToClient` mechanism + the interceptor's `onOutbound` are where M4 hooks in. The `mock-server.ts` `leak_secret` tool is your detector test target.
+CLI: `mcp-firewall wrap [--policy <f>] [--no-redact] [--no-open] [--verbose] -- <server>` and `mcp-firewall log`.
+
+**Next: M5 — ship v0.1.** This is polish/release, not new architecture: README with a real demo (asciinema/GIF), `npx mcp-firewall` bin + build step, config docs for adding the firewall to Claude Code / Cursor MCP config, a few example policies, LICENSE/CONTRIBUTING, publish to npm, tag v0.1.0. See `docs/ROADMAP.md` M5. Before publishing, actually try it against a real MCP server (e.g. `@modelcontextprotocol/server-filesystem`) end-to-end in Claude Code — the tests use a mock server, so a real-world smoke test is the main new verification.

@@ -8,10 +8,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import { mkdtempSync } from "node:fs";
+import { dirname, resolve, join } from "node:path";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -106,6 +106,82 @@ describe("transparent proxy (M1)", () => {
       type: "text",
       text: "hello through the firewall",
     });
+  }, 30_000);
+});
+
+describe("approval flow end-to-end (M4)", () => {
+  it("holds an ask call until the operator approves it via the web UI", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "mcp-fw-ask-"));
+    // A policy that asks on `echo`. JSON is valid YAML, so this parses fine.
+    const policyPath = join(dir, "policy.yaml");
+    writeFileSync(
+      policyPath,
+      JSON.stringify({
+        version: 1,
+        default: "allow",
+        rules: [{ name: "ask-echo", action: "ask", match: { tool: "echo" }, reason: "Confirm echo." }],
+      }),
+    );
+
+    const child: ChildProcessWithoutNullStreams = spawn(
+      tsxBin,
+      [cli, "wrap", "--no-open", "--policy", policyPath, "--", tsxBin, mockServer],
+      { cwd: dir, stdio: ["pipe", "pipe", "pipe"] },
+    );
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (c: string) => (stdout += c));
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (c: string) => (stderr += c));
+
+    const send = (msg: object) => child.stdin.write(JSON.stringify(msg) + "\n");
+    const waitFor = async (pred: () => boolean | Promise<boolean>, timeoutMs = 8000) => {
+      const start = Date.now();
+      while (!(await pred())) {
+        if (Date.now() - start > timeoutMs) throw new Error("timeout waiting for condition");
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    };
+
+    try {
+      // Wait for the approval server URL to appear on stderr.
+      await waitFor(() => /approvals: (http:\/\/\S+)/.test(stderr));
+      const approvalsUrl = stderr.match(/approvals: (http:\/\/\S+)/)![1]!;
+
+      send({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "e2e-ask", version: "0" } },
+      });
+      send({ jsonrpc: "2.0", method: "notifications/initialized" });
+      send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "echo", arguments: { text: "gated" } } });
+
+      // The call should be held — no id:2 response yet, and it shows as pending.
+      let pending: Array<{ id: string; tool: string }> = [];
+      await waitFor(async () => {
+        pending = (await (await fetch(`${approvalsUrl}/api/pending`)).json()) as typeof pending;
+        return pending.length === 1;
+      });
+      expect(pending[0]!.tool).toBe("echo");
+      expect(stdout).not.toContain('"id":2'); // still gated
+
+      // Approve it.
+      await fetch(`${approvalsUrl}/api/decide`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: pending[0]!.id, approved: true }),
+      });
+
+      // Now the echo response should be forwarded to the client.
+      await waitFor(() => stdout.includes('"id":2'));
+      expect(stdout).toContain("gated");
+    } finally {
+      child.stdin.end();
+      await new Promise((r) => child.on("close", r));
+    }
   }, 30_000);
 });
 

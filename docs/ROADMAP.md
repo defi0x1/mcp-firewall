@@ -93,20 +93,30 @@ Goal: allow / deny rules from YAML actually block calls.
 
 ---
 
-## M4 — Secrets detector + approval flow
+## M4 — Secrets detector + approval flow ✅ DONE
 
 Goal: catch secrets leaking through results; add the human-in-the-loop `ask` path.
 
-- [ ] `src/detectors/secrets.ts`: pure fn detecting API keys/tokens (AWS, GitHub, generic high-entropy) in tool results
-- [ ] Interceptor runs detectors on results; findings go into the audit record
-- [ ] Redaction per OQ2 (default: redact-and-annotate before returning to agent)
-- [ ] Resolve OQ1: approval UI for `ask` (local web UI on a port — spike first)
-- [ ] `ask` decisions recorded with `approved: true/false`
-- [ ] Unit tests: secrets detector true/false positives; redaction
+- [x] `src/detectors/secrets.ts`: pure fn detecting AWS/GitHub/Slack tokens, private keys, generic secret assignments
+- [x] `src/detectors/scan.ts`: aggregate detectors + `scanToolResult` (findings + redacted copy)
+- [x] Interceptor runs detectors on results; findings go into the audit record
+- [x] Redaction (OQ2): redact-and-annotate before returning to agent (`--no-redact` to disable); **audit log never stores raw secrets** (preview redacted, finding matches masked)
+- [x] Resolve OQ1: approval via a **local web UI** (`src/approval/server.ts`) — auto-opens the browser, polls pending, click Approve/Deny, auto-denies on timeout
+- [x] `ask` decisions recorded with `approved: true/false`; `deny`-by-human blocks like a policy deny
+- [x] Unit tests: detector (8), scan/redact (6), approval server (3); interceptor ask+redaction (12 total); approval flow end-to-end (`proxy.e2e.test.ts`)
 
-**Verify:** A tool result containing a fake AWS key is flagged, redacted before the agent sees it, and logged; an `ask` rule prompts and records the human's choice.
+**Verify:** ✅ leak_secret result reaches agent redacted (`[REDACTED:aws-access-key]`), raw key absent from `audit.jsonl` on disk; ask-on-echo call held until approved via the web API, then forwarded. `pnpm test` (44) + typecheck clean.
 
-**Milestone demo:** "The firewall stopped Claude from reading my `.env` back into its context."
+**Implementation notes for the next session:**
+- The approval flow works because **the proxy hook may be async** — the interceptor `await`s `Approver.request()`. Each c2s message is forwarded independently (`void this.forward(...)`), so one pending approval doesn't block other traffic.
+- Approvals reuse `HookContext.replyToClient` (from M3) for the deny path — same synthetic `isError` result.
+- Security refinement discovered mid-build: the audit log was storing raw secrets (in `resultPreview` and `Finding.match`). Fixed — the log always uses the redacted view and `maskFinding` truncates matches to `AKI…LE`. `--no-redact` only affects what the *agent* sees, never the on-disk log. (DESIGN OQ2 updated.)
+- `--no-open` disables browser auto-open (headless/CI); tests pass `autoOpen: false`.
+- Detectors are pure `(text) => Finding[]` and pattern-based (best-effort). Adding the **injection detector** (backlog) = a new `detect*` fn wired into `detectAll` in `scan.ts`; everything else already runs it.
+
+**Milestone demo:** "The firewall stopped Claude from reading my `.env` back into its context — and asked me before writing outside the project." ✅
+
+**→ Next session starts at M5 (ship v0.1).**
 
 ---
 
