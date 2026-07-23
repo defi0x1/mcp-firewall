@@ -1,24 +1,18 @@
 {
   "name": "mcp-firewall",
   "version": "0.1.0",
+  "private": true,
   "description": "A local-first security proxy for AI agents. Audit, policy, and secret detection for MCP tool calls.",
   "type": "module",
   "bin": {
     "mcp-firewall": "./dist/cli.js"
   },
-  "files": [
-    "dist",
-    "policies",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "mcp",
@@ -31,14 +25,14 @@
     "model-context-protocol"
   ],
   "license": "MIT",
-  "author": "mcp-firewall contributors",
-  "homepage": "https://github.com/YOUR_USERNAME/mcp-firewall#readme",
+  "author": "Cristian <cristiando0902@gmail.com>",
+  "homepage": "https://github.com/defi0x1/mcp-firewall#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_USERNAME/mcp-firewall.git"
+    "url": "git+https://github.com/defi0x1/mcp-firewall.git"
   },
   "bugs": {
-    "url": "https://github.com/YOUR_USERNAME/mcp-firewall/issues"
+    "url": "https://github.com/defi0x1/mcp-firewall/issues"
   },
   "engines": {
     "node": ">=20"

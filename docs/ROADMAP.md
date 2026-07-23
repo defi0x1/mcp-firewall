@@ -120,24 +120,29 @@ Goal: catch secrets leaking through results; add the human-in-the-loop `ask` pat
 
 ---
 
-## M5 — Ship v0.1 🚧 (release-ready; publish is a maintainer step)
+## M5 — Ship v0.1 🚧 (release-ready; a few maintainer steps remain)
 
-- [x] README rewritten as a landing page (with a demo transcript; **GIF/asciinema still to record** — placeholder in README)
-- [x] `npx mcp-firewall` works — bin entry + build verified (`node dist/cli.js` blocks a call end-to-end); `prepublishOnly` runs typecheck+test+build
-- [x] Config docs: `docs/INTEGRATION.md` (Claude Code / Cursor / Windsurf)
+**Distribution model:** NOT published to npm (`private: true`). Users run it from
+a local clone of `github.com/defi0x1/mcp-firewall` (`pnpm install && pnpm build`,
+then `node <REPO>/dist/cli.js …` or an optional `pnpm link --global`). The README
+documents two paths: manual/dev use, and an AI-agent setup prompt.
+
+- [x] README rewritten as a landing page — install-from-source + the two usage paths (manual, AI-agent prompt); **GIF/asciinema still to record** (placeholder in README)
+- [x] Runs from the built artifact — `node dist/cli.js` blocks a call end-to-end; `bin` + `pnpm link --global` give a global `mcp-firewall` command
+- [x] Config docs: `docs/INTEGRATION.md` (Claude Code / Cursor / Windsurf) using `node <REPO>/dist/cli.js`
 - [x] Example policies: `policies/examples/{read-only,filesystem,paranoid}.yaml` (all validated against the schema)
-- [x] LICENSE (MIT) + CONTRIBUTING.md
-- [x] `package.json` release metadata (v0.1.0, files, keywords, repo/bugs/homepage placeholders)
+- [x] LICENSE (MIT, © Cristian) + CONTRIBUTING.md
+- [x] `package.json`: v0.1.0, `private: true`, author, GitHub repo/homepage/bugs (defi0x1)
 - [ ] **Record a demo GIF/asciinema** and drop it in the README (maintainer)
-- [ ] **Set the real GitHub repo URL** in package.json (`YOUR_USERNAME` placeholder) (maintainer)
-- [ ] **Real-world smoke test**: `npx mcp-firewall wrap --policy … -- npx -y @modelcontextprotocol/server-filesystem <dir>` inside Claude Code; confirm audit/deny/redact/approve against a *real* server (all tests so far use the mock) (maintainer)
-- [ ] **`npm publish`** (requires `npm login`) (maintainer)
+- [ ] **Push to GitHub**: create `github.com/defi0x1/mcp-firewall` and `git push -u origin main` (maintainer)
+- [ ] **Real-world smoke test**: `node <REPO>/dist/cli.js wrap --policy <REPO>/policies/examples/filesystem.yaml -- npx -y @modelcontextprotocol/server-filesystem <dir>` inside Claude Code; confirm audit/deny/redact/approve against a *real* server (all tests so far use the mock) (maintainer)
 - [ ] **Tag `v0.1.0`**: `git tag v0.1.0 && git push --tags` (maintainer)
 
-**Verify:** ✅ built artifact blocks a call; ✅ `npm pack --dry-run` ships only dist/policies/README/LICENSE (no tests, no src, no secrets); ✅ 44 tests + typecheck pass. Remaining: the real-server smoke test + publish, which need a browser and npm credentials (maintainer).
+**Verify:** ✅ built artifact blocks a call; ✅ 44 tests + typecheck pass. Remaining: push to GitHub + the real-server smoke test, which needs a browser + a live MCP server (maintainer).
 
 **Implementation notes:**
-- `dist/` is gitignored but shipped to npm via the `files` whitelist; `prepublishOnly` builds it fresh before publish. Don't commit `dist/`.
+- `dist/` is gitignored — users build it themselves after cloning. If you ever want a zero-build install, either commit `dist/` or add a `prepare` script; for now the README's `pnpm build` step covers it.
+- `private: true` blocks `npm publish` (intentional — GitHub-only distribution). It does **not** affect `pnpm link --global` or GitHub.
 - The audit log lands in the *server's cwd* (`.mcp-firewall/`), which under an MCP client is wherever the client launches the server — mention this to users who "can't find the log".
 
 ---

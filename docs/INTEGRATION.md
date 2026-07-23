@@ -1,17 +1,24 @@
 # Wiring mcp-firewall into your agent
 
 mcp-firewall wraps an existing MCP server. Wherever your MCP client (Claude
-Code, Cursor, Windsurf, Cline, …) currently launches a server, you insert
-`mcp-firewall wrap … --` in front of the original command.
+Code, Cursor, Windsurf, Cline, …) currently launches a server, you insert the
+firewall in front of the original command.
+
+This project isn't published to npm — you run it from your local clone. Build it
+once (`pnpm install && pnpm build`), then refer to it by the absolute path to
+`dist/cli.js`. In the examples below, `<REPO>` means the absolute path to your
+mcp-firewall checkout (e.g. `/Users/you/Documents/mcp-firewall`).
 
 The general transformation:
 
 ```
 BEFORE:  <server-command> <server-args...>
-AFTER:   npx -y mcp-firewall wrap --policy <policy.yaml> -- <server-command> <server-args...>
+AFTER:   node <REPO>/dist/cli.js wrap --policy <REPO>/policies/examples/<policy>.yaml -- <server-command> <server-args...>
 ```
 
-Everything after `--` is the original server command, untouched.
+Everything after `--` is the original server command, untouched. (If you ran
+`pnpm link --global`, you can write `mcp-firewall wrap …` instead of
+`node <REPO>/dist/cli.js wrap …`.)
 
 ---
 
@@ -37,10 +44,10 @@ Wrap it with the firewall:
 {
   "mcpServers": {
     "filesystem": {
-      "command": "npx",
+      "command": "node",
       "args": [
-        "-y", "mcp-firewall", "wrap",
-        "--policy", "/absolute/path/to/policy.yaml",
+        "<REPO>/dist/cli.js", "wrap",
+        "--policy", "<REPO>/policies/examples/filesystem.yaml",
         "--",
         "npx", "-y", "@modelcontextprotocol/server-filesystem", "/path/to/project"
       ]
@@ -49,15 +56,16 @@ Wrap it with the firewall:
 }
 ```
 
-That's the whole change: the `command` becomes `npx`/`mcp-firewall wrap …`, and
-your original command moves after `--`. Use an **absolute path** for `--policy`
-(the server's working directory may not be your project root).
+That's the whole change: `command` becomes `node <REPO>/dist/cli.js wrap …`, and
+your original command moves after `--`. Use **absolute paths** for both the CLI
+and the `--policy` file (the server's working directory may not be your project
+root).
 
 You can also add it with the CLI:
 
 ```bash
-claude mcp add filesystem -- npx -y mcp-firewall wrap \
-  --policy /absolute/path/to/policy.yaml -- \
+claude mcp add filesystem -- node <REPO>/dist/cli.js wrap \
+  --policy <REPO>/policies/examples/filesystem.yaml -- \
   npx -y @modelcontextprotocol/server-filesystem /path/to/project
 ```
 
@@ -65,14 +73,14 @@ claude mcp add filesystem -- npx -y mcp-firewall wrap \
 
 These use the same `mcpServers` JSON shape (in `~/.cursor/mcp.json`,
 Windsurf's `mcp_config.json`, etc.). Apply the identical transformation: prepend
-`npx -y mcp-firewall wrap --policy <file> --` to the existing command/args.
+`node <REPO>/dist/cli.js wrap --policy <file> --` to the existing command/args.
 
 ---
 
 ## What you'll see
 
 - **Audit** — every tool call is appended to `.mcp-firewall/audit.jsonl` in the
-  server's working directory. Read it with `npx mcp-firewall log`.
+  server's working directory. Read it with `node <REPO>/dist/cli.js log`.
 - **Deny** — a blocked call returns a tool error to the agent
   (`⛔ Blocked by mcp-firewall policy …`); the agent sees it and adapts.
 - **Ask** — a browser tab opens with an Approve/Deny prompt. The call is held

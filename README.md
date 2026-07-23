@@ -31,19 +31,94 @@ key it found in a file. mcp-firewall is a thin, auditable layer that watches and
 gates that traffic on *your* machine, without you having to trust the agent or
 the server.
 
-## Quick start
+## Install (from source — not on npm)
 
 ```bash
-# Wrap any MCP server. Everything after `--` is the real server command.
-npx -y mcp-firewall wrap --policy policies/examples/filesystem.yaml -- \
-  npx -y @modelcontextprotocol/server-filesystem /path/to/project
-
-# In another terminal, see what your agent has been doing:
-npx -y mcp-firewall log
+git clone https://github.com/defi0x1/mcp-firewall.git
+cd mcp-firewall
+pnpm install
+pnpm build          # produces dist/cli.js
 ```
 
-To use it with your agent permanently, wrap the server in your MCP config — see
-[docs/INTEGRATION.md](docs/INTEGRATION.md) for Claude Code / Cursor / Windsurf.
+Optionally expose a global `mcp-firewall` command backed by your local build:
+
+```bash
+pnpm link --global  # now `mcp-firewall …` runs this repo
+```
+
+Throughout the docs, `mcp-firewall` and `node /abs/path/to/mcp-firewall/dist/cli.js`
+are interchangeable — use the global command if you linked it, otherwise the
+absolute `node …/dist/cli.js` path.
+
+## Two ways to use it
+
+### 1. Manual / developer use
+
+Run the firewall around any MCP server yourself. Everything after `--` is the
+real server command:
+
+```bash
+node dist/cli.js wrap --policy policies/examples/filesystem.yaml -- \
+  npx -y @modelcontextprotocol/server-filesystem /path/to/project
+
+# during development you can skip the build step and run from source:
+pnpm dev wrap --policy policies/examples/filesystem.yaml -- <server-command…>
+
+# see what your agent has been doing:
+node dist/cli.js log
+```
+
+To make it permanent, point your MCP client (Claude Code / Cursor / Windsurf) at
+the firewall instead of the raw server, using **absolute paths**:
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "node",
+      "args": [
+        "/abs/path/to/mcp-firewall/dist/cli.js", "wrap",
+        "--policy", "/abs/path/to/mcp-firewall/policies/examples/filesystem.yaml",
+        "--",
+        "npx", "-y", "@modelcontextprotocol/server-filesystem", "/path/to/project"
+      ]
+    }
+  }
+}
+```
+
+Full per-client instructions: [docs/INTEGRATION.md](docs/INTEGRATION.md).
+
+### 2. Let an AI agent set it up for you (prompt)
+
+Don't want to edit configs by hand? Paste the prompt below into **Claude Code**
+(or any capable coding agent) and it will build the firewall and wrap every MCP
+server in your config for you. Fill in the one bracketed path first:
+
+> Set up **mcp-firewall** (an MCP security proxy) to protect my AI agent's tool calls.
+>
+> The repo is at: `[/absolute/path/to/mcp-firewall]` — clone it from
+> https://github.com/defi0x1/mcp-firewall first if it isn't there.
+>
+> Do this:
+> 1. In that repo, run `pnpm install` and `pnpm build` so `dist/cli.js` exists.
+> 2. Read its `docs/INTEGRATION.md` and list the policies in `policies/examples/`.
+> 3. Find my MCP client config (`.mcp.json` in this project, or `~/.claude.json` /
+>    `~/.cursor/mcp.json`) and list the MCP servers I currently have configured.
+> 4. Wrap each server with the firewall by changing its launch command to:
+>    `"command": "node"`, `"args": ["<REPO>/dist/cli.js", "wrap", "--policy",
+>    "<REPO>/policies/examples/<policy>.yaml", "--", <the server's ORIGINAL command and args>]`.
+>    Pick the policy per server: `read-only.yaml` if it should only read,
+>    `filesystem.yaml` for filesystem/shell servers, `paranoid.yaml` to approve
+>    everything. Ask me if you're unsure which.
+> 5. Show me the before/after diff of my config and wait for my confirmation
+>    before writing it. Use absolute paths everywhere.
+> 6. After I confirm, tell me how to watch the audit log
+>    (`node <REPO>/dist/cli.js log`) and that `ask` rules open a browser tab for
+>    approval.
+
+That single prompt is the full setup — the agent does the clone/build, chooses
+policies, and rewires your config with your sign-off.
 
 ## Demo
 

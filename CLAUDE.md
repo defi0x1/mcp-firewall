@@ -55,6 +55,8 @@ M0–M4 complete (44 tests passing). Full pipeline works:
 
 CLI: `mcp-firewall wrap [--policy <f>] [--no-redact] [--no-open] [--verbose] -- <server>` and `mcp-firewall log`.
 
-**M5 is release-ready.** Done: README landing page, `docs/INTEGRATION.md`, example policies, LICENSE, CONTRIBUTING, package.json v0.1.0 metadata, `prepublishOnly` gate, verified built artifact. `npm pack --dry-run` is clean.
+**M5 is release-ready.** Done: README landing page, `docs/INTEGRATION.md`, example policies, LICENSE, CONTRIBUTING, package.json v0.1.0 metadata, verified built artifact.
 
-**Remaining M5 items need the maintainer** (credentials / browser / a real server) — see `docs/ROADMAP.md` M5 unchecked boxes: record a demo GIF, set the real GitHub URL (replace `YOUR_USERNAME` in package.json), run a real-server smoke test in Claude Code, `npm publish`, and `git tag v0.1.0`. After v0.1 ships, the backlog (injection detector, MCP-server scanner, HTTP transport, trace-viewer UI) is at the bottom of `docs/ROADMAP.md`.
+**Distribution: GitHub-only, run from source — NOT npm.** `package.json` has `private: true`. Users clone `github.com/defi0x1/mcp-firewall`, `pnpm install && pnpm build`, then run `node <REPO>/dist/cli.js …` (or `pnpm link --global` for a global `mcp-firewall` command). README documents two paths: (1) manual/dev use, (2) an AI-agent setup prompt that does the whole thing. Do NOT re-add npm-publish steps or make it public without the maintainer asking.
+
+**Remaining M5 items need the maintainer** (browser / a real server / GitHub) — see `docs/ROADMAP.md` M5 unchecked boxes: record a demo GIF, push to GitHub (`defi0x1`), run a real-server smoke test in Claude Code, and `git tag v0.1.0`. After v0.1, the backlog (injection detector, MCP-server scanner, HTTP transport, trace-viewer UI) is at the bottom of `docs/ROADMAP.md`.
