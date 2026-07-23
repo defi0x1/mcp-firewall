@@ -3,25 +3,31 @@
  * mcp-firewall CLI entry point.
  *
  * Subcommands (see docs/ROADMAP.md):
- *   - `wrap`  (M1) ✅ — start the transparent proxy around a real MCP server
- *   - `log`   (M2)    — pretty-print the audit log (not implemented yet)
+ *   - `wrap`  (M1/M2) ✅ — start the proxy around a real MCP server, auditing calls
+ *   - `log`   (M2)    ✅ — pretty-print the audit log
  */
 
 import { Proxy, type ProxyHook } from "./proxy.js";
+import { AuditInterceptor } from "./interceptor.js";
+import { AuditLog, defaultAuditPath } from "./audit/log.js";
 import { logStderr, describeMessage } from "./log.js";
+import type { AuditRecord } from "./types.js";
 
 const USAGE = `mcp-firewall — a security proxy for AI agents (MCP)
 
 Usage:
-  mcp-firewall wrap -- <server-command...>
-      Run an MCP server behind the firewall. Everything after '--' is the
+  mcp-firewall wrap [--verbose] -- <server-command...>
+      Run an MCP server behind the firewall. Every tool call is recorded to
+      the audit log (.mcp-firewall/audit.jsonl). Everything after '--' is the
       command that launches the real server.
 
       Example:
         mcp-firewall wrap -- npx -y @modelcontextprotocol/server-filesystem /tmp
 
+      --verbose   also log every JSON-RPC message to stderr (proxy passthrough)
+
   mcp-firewall log [--file <path>]
-      Pretty-print the audit log. (M2 — not implemented yet)
+      Pretty-print the audit log (default: .mcp-firewall/audit.jsonl).
 
 Docs: see docs/ROADMAP.md for what's built and what's next.
 `;
@@ -34,8 +40,7 @@ function main(argv: string[]): void {
       runWrap(rest);
       break;
     case "log":
-      console.error(`"log" is not implemented yet. See docs/ROADMAP.md.`);
-      process.exit(1);
+      void runLog(rest);
       break;
     case undefined:
     case "-h":
@@ -51,10 +56,11 @@ function main(argv: string[]): void {
 }
 
 /**
- * `wrap -- <server-command...>` — split the args on the `--` separator, then
- * start the proxy. The command after `--` becomes the upstream server.
+ * `wrap [--verbose] -- <server-command...>` — start the proxy with the audit
+ * interceptor. `--verbose` adds the M1 passthrough logger on top.
  */
 function runWrap(args: string[]): void {
+  const verbose = args.includes("--verbose");
   const sepIndex = args.indexOf("--");
   const serverCmd = sepIndex === -1 ? [] : args.slice(sepIndex + 1);
 
@@ -65,18 +71,33 @@ function runWrap(args: string[]): void {
   }
 
   const [command, ...serverArgs] = serverCmd;
+  const serverName = serverCmd.join(" ");
 
-  // M1 passthrough hook: log every message to stderr and forward it untouched.
-  // This is temporary proof-of-flow; the audit interceptor replaces it at M2.
-  const passthroughLogger: ProxyHook = (message, direction) => {
-    const arrow = direction === "c2s" ? "→" : "←";
-    logStderr(`${arrow} ${describeMessage(message)}`);
-    return message;
-  };
+  // Audit interceptor: record every tool call to the JSONL log, and print a
+  // concise one-liner to stderr as each call completes.
+  const audit = new AuditLog(defaultAuditPath());
+  const interceptor = new AuditInterceptor({
+    server: serverName,
+    sink: (record) => {
+      void audit.append(record);
+      const status = record.isError ? "error" : `${record.durationMs}ms`;
+      logStderr(`audited: ${record.tool} (${status})`);
+    },
+  });
+
+  const hooks: ProxyHook[] = [interceptor.hook];
+
+  if (verbose) {
+    hooks.unshift((message, direction) => {
+      const arrow = direction === "c2s" ? "→" : "←";
+      logStderr(`${arrow} ${describeMessage(message)}`);
+      return message;
+    });
+  }
 
   const proxy = new Proxy({
     upstream: { command: command!, args: serverArgs },
-    hooks: [passthroughLogger],
+    hooks,
     onClose: () => {
       logStderr("upstream closed; shutting down");
       process.exit(0);
@@ -89,7 +110,62 @@ function runWrap(args: string[]): void {
     process.exit(1);
   });
 
-  logStderr(`wrapping: ${serverCmd.join(" ")}`);
+  logStderr(`wrapping: ${serverName}`);
+  logStderr(`audit log: ${defaultAuditPath()}`);
+}
+
+/** `log [--file <path>]` — pretty-print the audit log to stdout. */
+async function runLog(args: string[]): Promise<void> {
+  const fileFlag = args.indexOf("--file");
+  const filePath =
+    fileFlag !== -1 && args[fileFlag + 1] ? args[fileFlag + 1]! : defaultAuditPath();
+
+  const records = await new AuditLog(filePath).read();
+
+  if (records.length === 0) {
+    console.log(`No audit records in ${filePath}.`);
+    return;
+  }
+
+  console.log(`Audit log: ${filePath} (${records.length} record(s))\n`);
+  for (const rec of records) {
+    console.log(formatRecord(rec));
+  }
+}
+
+/** One human-readable block per audit record. */
+function formatRecord(rec: AuditRecord): string {
+  const time = rec.ts.replace("T", " ").replace(/\.\d+Z$/, "Z");
+  const decision = rec.decision.toUpperCase();
+  const status = rec.isError ? "ERROR" : `${rec.durationMs ?? "?"}ms`;
+  const args = truncate(safeJson(rec.args), 80);
+
+  const lines = [
+    `${time}  [${decision}] ${rec.tool}  (${status})`,
+    `  server: ${rec.server}`,
+    `  args:   ${args}`,
+  ];
+  if (rec.resultPreview !== undefined) lines.push(`  result: ${truncate(rec.resultPreview, 80)}`);
+  if (rec.error !== undefined) lines.push(`  error:  ${truncate(rec.error, 80)}`);
+  if (rec.findings.length > 0) {
+    lines.push(`  findings: ${rec.findings.length}`);
+    for (const f of rec.findings) {
+      lines.push(`    - [${f.severity}] ${f.detector}: ${f.message}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "…" : s;
 }
 
 main(process.argv.slice(2));

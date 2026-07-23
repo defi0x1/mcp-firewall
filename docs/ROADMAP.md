@@ -44,19 +44,27 @@ Goal: real Claude Code ↔ MCP traffic flows *through our code*, unmodified. Thi
 
 ---
 
-## M2 — Audit log
+## M2 — Audit log ✅ DONE
 
 Goal: every tool call is recorded.
 
-- [ ] `src/audit/log.ts`: append `AuditRecord` (see ARCHITECTURE) as JSONL to `./.mcp-firewall/audit.jsonl`
-- [ ] `src/interceptor.ts`: intercept `tools/call`, capture args + result + duration, write a record
-- [ ] Wire the interceptor into the proxy
-- [ ] `mcp-firewall log` command: pretty-print the audit log
-- [ ] Unit test: interceptor produces a correct record for a mock call
+- [x] `src/audit/log.ts`: append `AuditRecord` as JSONL to `./.mcp-firewall/audit.jsonl` (serialized writes; `read()` for the log command)
+- [x] `src/interceptor.ts`: intercept `tools/call`, correlate request↔response by id, capture args + result + duration, write a record
+- [x] Wire the interceptor into the proxy (default hook on `wrap`; `--verbose` adds the M1 passthrough logger)
+- [x] `mcp-firewall log` command: pretty-print the audit log
+- [x] Unit test: interceptor produces correct records (`src/interceptor.test.ts` — 5 cases incl. errors, non-tool traffic, out-of-order correlation)
 
-**Verify:** After a session, `mcp-firewall log` shows each tool call with args, result summary, and timing.
+**Verify:** ✅ Ran a 3-call session; `mcp-firewall log` shows each call with args, result preview, decision, and timing. `pnpm test` (6 tests) + `pnpm typecheck` clean.
 
-**Milestone demo:** "Here's every tool your agent called, replayable."
+**Implementation notes for the next session:**
+- Shared data shapes now live in `src/types.ts` (`Decision`, `Finding`, `AuditRecord`) — the source of truth; ARCHITECTURE.md mirrors it.
+- The interceptor is a **stateful hook**: it keys pending calls by JSON-RPC id on the request and completes the record on the response. This request↔response correlation is the machinery M3/M4 build on. `decision` is hardcoded `"allow"` and `findings` is `[]` until then.
+- `AuditRecord` gained `resultPreview` (truncated, never the full payload — secrets/size) and `isError`. These extend the ARCHITECTURE sketch; both docs updated.
+- The interceptor takes injectable `sink` and `now` (see the unit test) — keep that seam; it's what makes the security logic testable without disk or wall-clock.
+
+**Milestone demo:** "Here's every tool your agent called, replayable." (The `leak_secret` call's result preview already shows a fake AWS key — M4's detector target.)
+
+**→ Next session starts at M3 (policy engine).**
 
 ---
 

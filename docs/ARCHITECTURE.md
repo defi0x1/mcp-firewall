@@ -67,17 +67,11 @@ Every JSON-RPC message is one of: a **request** (has `id` + `method`), a **respo
 | **Approval UI** | For `ask`: prompt the human (terminal first, richer later) | `src/approval/*.ts` |
 | **CLI** | `mcp-firewall wrap <server-cmd>` entry point | `src/cli.ts` |
 
-## Data shapes (informal, firm up in code)
+## Data shapes
+
+**The source of truth is `src/types.ts`.** This mirror is kept in sync for readers who don't want to open the code.
 
 ```ts
-// A normalized view of a tool call the interceptor works with
-interface ToolCall {
-  server: string;        // which upstream server
-  tool: string;          // tool name
-  args: unknown;         // JSON args
-  raw: JSONRPCRequest;   // original message
-}
-
 // A detector's output
 interface Finding {
   detector: string;      // "secrets" | "injection" | "dangerous-op"
@@ -88,17 +82,21 @@ interface Finding {
 
 // One audit record (one JSONL line)
 interface AuditRecord {
-  ts: string;            // ISO 8601
-  server: string;
+  ts: string;            // ISO 8601, when the call was initiated
+  server: string;        // identifier of the wrapped upstream server
   tool: string;
   args: unknown;
   decision: "allow" | "deny" | "ask";
-  approved?: boolean;    // for ask
+  approved?: boolean;    // for `ask`
   findings: Finding[];
-  durationMs?: number;
-  error?: string;
+  durationMs?: number;   // request → response wall time
+  resultPreview?: string; // short, truncated result summary — NEVER the full payload
+  isError?: boolean;     // the tool result carried an MCP error
+  error?: string;        // proxy-level error text
 }
 ```
+
+> Note on how the interceptor works with a tool call: it does **not** hold a single `ToolCall` object end-to-end. A call is two wire messages (request + response) correlated by JSON-RPC `id`; the interceptor keeps a small pending-map keyed by id and emits the `AuditRecord` when the response arrives. See `src/interceptor.ts`.
 
 ## Non-goals (for now)
 

@@ -11,6 +11,8 @@ import { describe, it, expect } from "vitest";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
@@ -33,8 +35,10 @@ interface JsonRpcResponse {
  */
 function runProxy(messages: object[]): Promise<JsonRpcResponse[]> {
   return new Promise((resolvePromise, reject) => {
+    // Run in a throwaway cwd so the audit log (.mcp-firewall/) doesn't land in
+    // the repo. Absolute paths above mean cwd doesn't affect resolution.
     const child = spawn(tsxBin, [cli, "wrap", "--", tsxBin, mockServer], {
-      cwd: repoRoot,
+      cwd: mkdtempSync(resolve(tmpdir(), "mcp-fw-e2e-")),
       stdio: ["pipe", "pipe", "inherit"],
     });
 

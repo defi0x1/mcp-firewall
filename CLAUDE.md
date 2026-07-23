@@ -45,4 +45,4 @@ pnpm build      # tsc → dist/
 
 ## Current state
 
-M0 + M1 complete. The transparent stdio proxy works and is covered by an e2e test (`src/proxy.e2e.test.ts`). Traffic flows through `src/proxy.ts` via a `hooks` array — the extension point for everything else. **Next: M2 — the audit log** (add an interceptor hook that records every `tools/call` to JSONL). Read `docs/ROADMAP.md` M1's "Implementation notes" before starting M2.
+M0 + M1 + M2 complete. The transparent proxy (`src/proxy.ts`) works, and an audit interceptor (`src/interceptor.ts`) records every `tools/call` to `.mcp-firewall/audit.jsonl`, readable via `mcp-firewall log`. Data shapes live in `src/types.ts`. 6 tests pass. **Next: M3 — the policy engine** (load `policies/*.yaml`, evaluate a tool call to allow/deny/ask; on `deny` the hook returns a synthetic MCP error and forwards nothing). Read `docs/ROADMAP.md` M2's "Implementation notes" first — the interceptor's request↔response correlation and the `decision`/`findings` fields are the seams M3 plugs into.
