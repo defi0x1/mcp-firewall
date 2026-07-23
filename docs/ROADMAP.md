@@ -120,16 +120,25 @@ Goal: catch secrets leaking through results; add the human-in-the-loop `ask` pat
 
 ---
 
-## M5 — Ship v0.1
+## M5 — Ship v0.1 🚧 (release-ready; publish is a maintainer step)
 
-- [ ] README with a real GIF/asciinema demo
-- [ ] `npx mcp-firewall` works (bin entry, build step)
-- [ ] Config docs: how to add the firewall to Claude Code / Cursor MCP config
-- [ ] Handful of realistic example policies
-- [ ] LICENSE (MIT), CONTRIBUTING, publish to npm
-- [ ] Tag `v0.1.0`
+- [x] README rewritten as a landing page (with a demo transcript; **GIF/asciinema still to record** — placeholder in README)
+- [x] `npx mcp-firewall` works — bin entry + build verified (`node dist/cli.js` blocks a call end-to-end); `prepublishOnly` runs typecheck+test+build
+- [x] Config docs: `docs/INTEGRATION.md` (Claude Code / Cursor / Windsurf)
+- [x] Example policies: `policies/examples/{read-only,filesystem,paranoid}.yaml` (all validated against the schema)
+- [x] LICENSE (MIT) + CONTRIBUTING.md
+- [x] `package.json` release metadata (v0.1.0, files, keywords, repo/bugs/homepage placeholders)
+- [ ] **Record a demo GIF/asciinema** and drop it in the README (maintainer)
+- [ ] **Set the real GitHub repo URL** in package.json (`YOUR_USERNAME` placeholder) (maintainer)
+- [ ] **Real-world smoke test**: `npx mcp-firewall wrap --policy … -- npx -y @modelcontextprotocol/server-filesystem <dir>` inside Claude Code; confirm audit/deny/redact/approve against a *real* server (all tests so far use the mock) (maintainer)
+- [ ] **`npm publish`** (requires `npm login`) (maintainer)
+- [ ] **Tag `v0.1.0`**: `git tag v0.1.0 && git push --tags` (maintainer)
 
-**Verify:** A fresh machine can `npx mcp-firewall wrap -- <server>`, add it to Claude Code, and see audit + policy working.
+**Verify:** ✅ built artifact blocks a call; ✅ `npm pack --dry-run` ships only dist/policies/README/LICENSE (no tests, no src, no secrets); ✅ 44 tests + typecheck pass. Remaining: the real-server smoke test + publish, which need a browser and npm credentials (maintainer).
+
+**Implementation notes:**
+- `dist/` is gitignored but shipped to npm via the `files` whitelist; `prepublishOnly` builds it fresh before publish. Don't commit `dist/`.
+- The audit log lands in the *server's cwd* (`.mcp-firewall/`), which under an MCP client is wherever the client launches the server — mention this to users who "can't find the log".
 
 ---
 

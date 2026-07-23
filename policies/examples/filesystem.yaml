@@ -1,0 +1,42 @@
+# filesystem.yaml — for wrapping an MCP filesystem/shell server.
+#
+# Blocks destructive shell commands outright, and requires your approval before
+# the agent writes outside the project directory or reads common secret files.
+# Everything else is allowed. Pair with:
+#   mcp-firewall wrap --policy policies/examples/filesystem.yaml -- <fs-server>
+
+version: 1
+
+default: allow
+
+rules:
+  # Hard block: destructive shell commands, no approval offered.
+  - name: block-destructive-shell
+    action: deny
+    match:
+      tool: "*bash*"
+      args_regex: "rm\\s+-rf|mkfs|dd\\s+if=|:\\(\\)\\s*\\{|>\\s*/dev/sd"
+    reason: "Destructive shell command blocked by policy."
+
+  # Ask before writing outside the current project directory.
+  - name: confirm-writes-outside-cwd
+    action: ask
+    match:
+      tool: "*write*"
+      path_outside: "."
+    reason: "Write outside the project directory — confirm before allowing."
+
+  - name: confirm-edits-outside-cwd
+    action: ask
+    match:
+      tool: "*edit*"
+      path_outside: "."
+    reason: "Edit outside the project directory — confirm before allowing."
+
+  # Ask before reading files that commonly hold secrets.
+  - name: confirm-read-secrets
+    action: ask
+    match:
+      tool: "*read*"
+      args_regex: "\\.env|\\.aws/credentials|id_rsa|id_ed25519|\\.ssh/|\\.npmrc|\\.git-credentials"
+    reason: "Reading a file that may contain secrets — confirm first."

@@ -55,4 +55,6 @@ M0–M4 complete (44 tests passing). Full pipeline works:
 
 CLI: `mcp-firewall wrap [--policy <f>] [--no-redact] [--no-open] [--verbose] -- <server>` and `mcp-firewall log`.
 
-**Next: M5 — ship v0.1.** This is polish/release, not new architecture: README with a real demo (asciinema/GIF), `npx mcp-firewall` bin + build step, config docs for adding the firewall to Claude Code / Cursor MCP config, a few example policies, LICENSE/CONTRIBUTING, publish to npm, tag v0.1.0. See `docs/ROADMAP.md` M5. Before publishing, actually try it against a real MCP server (e.g. `@modelcontextprotocol/server-filesystem`) end-to-end in Claude Code — the tests use a mock server, so a real-world smoke test is the main new verification.
+**M5 is release-ready.** Done: README landing page, `docs/INTEGRATION.md`, example policies, LICENSE, CONTRIBUTING, package.json v0.1.0 metadata, `prepublishOnly` gate, verified built artifact. `npm pack --dry-run` is clean.
+
+**Remaining M5 items need the maintainer** (credentials / browser / a real server) — see `docs/ROADMAP.md` M5 unchecked boxes: record a demo GIF, set the real GitHub URL (replace `YOUR_USERNAME` in package.json), run a real-server smoke test in Claude Code, `npm publish`, and `git tag v0.1.0`. After v0.1 ships, the backlog (injection detector, MCP-server scanner, HTTP transport, trace-viewer UI) is at the bottom of `docs/ROADMAP.md`.

@@ -1,0 +1,33 @@
+# paranoid.yaml — deny by default, approve everything else.
+#
+# The strictest posture: nothing runs unless you explicitly approve it in the
+# web UI. Good for high-stakes environments or when trying out an unfamiliar
+# MCP server. Expect to click a lot. Add explicit `allow` rules for tools you
+# trust to cut down on prompts.
+
+version: 1
+
+default: ask # every unlisted tool call requires your approval
+
+rules:
+  # Even with ask-by-default, some things should never run at all.
+  - name: never-destructive-shell
+    action: deny
+    match:
+      tool: "*bash*"
+      args_regex: "rm\\s+-rf|mkfs|dd\\s+if=|:\\(\\)\\s*\\{|>\\s*/dev/sd"
+    reason: "Destructive shell command — hard denied even in paranoid mode."
+
+  # Allowlist a few obviously-safe read/search tools to reduce prompt fatigue.
+  - name: allow-safe-reads
+    action: allow
+    match:
+      tool: "*grep*"
+  - name: allow-glob
+    action: allow
+    match:
+      tool: "*glob*"
+  - name: allow-list
+    action: allow
+    match:
+      tool: "*list*"

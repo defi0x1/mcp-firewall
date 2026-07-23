@@ -1,7 +1,7 @@
 {
   "name": "mcp-firewall",
-  "version": "0.0.0",
-  "description": "A local-first security proxy for AI agents. Audit, policy, and detection for MCP tool calls.",
+  "version": "0.1.0",
+  "description": "A local-first security proxy for AI agents. Audit, policy, and secret detection for MCP tool calls.",
   "type": "module",
   "bin": {
     "mcp-firewall": "./dist/cli.js"
@@ -9,14 +9,16 @@
   "files": [
     "dist",
     "policies",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
   },
   "keywords": [
     "mcp",
@@ -24,9 +26,20 @@
     "security",
     "firewall",
     "audit",
+    "guardrails",
+    "prompt-injection",
     "model-context-protocol"
   ],
   "license": "MIT",
+  "author": "mcp-firewall contributors",
+  "homepage": "https://github.com/YOUR_USERNAME/mcp-firewall#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YOUR_USERNAME/mcp-firewall.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YOUR_USERNAME/mcp-firewall/issues"
+  },
   "engines": {
     "node": ">=20"
   },

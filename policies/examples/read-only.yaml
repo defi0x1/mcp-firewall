@@ -1,0 +1,40 @@
+# read-only.yaml — deny anything that looks like it mutates state.
+#
+# A conservative policy for exploratory sessions: let the agent read and search,
+# but block writes, edits, deletes, moves, and shell execution. Use when you
+# want the agent to analyze a codebase without changing it.
+
+version: 1
+
+default: allow
+
+rules:
+  - name: block-writes
+    action: deny
+    match:
+      tool: "*write*"
+    reason: "Read-only session: writes are blocked."
+
+  - name: block-edits
+    action: deny
+    match:
+      tool: "*edit*"
+    reason: "Read-only session: edits are blocked."
+
+  - name: block-deletes
+    action: deny
+    match:
+      tool: "*delete*"
+    reason: "Read-only session: deletes are blocked."
+
+  - name: block-move-rename
+    action: deny
+    match:
+      tool: "*move*"
+    reason: "Read-only session: moves/renames are blocked."
+
+  - name: block-shell
+    action: deny
+    match:
+      tool: "*bash*"
+    reason: "Read-only session: shell execution is blocked."
