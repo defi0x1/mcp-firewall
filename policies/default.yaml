@@ -1,0 +1,35 @@
+# mcp-firewall policy — starter rules.
+#
+# Rules are evaluated top to bottom; the FIRST match wins. If nothing matches,
+# the `default` action applies. This file is a sketch of the intended shape —
+# the matcher vocabulary is finalized in M3 (see docs/ROADMAP.md). Keep it
+# readable: a human should be able to audit their security posture here.
+
+version: 1
+
+default: allow # allow | deny | ask
+
+rules:
+  # Block obviously destructive shell commands outright.
+  - name: block-destructive-shell
+    action: deny
+    match:
+      tool: "*bash*" # tool-name glob
+      args_regex: "rm\\s+-rf|mkfs|dd\\s+if=|:\\(\\)\\s*\\{" # fork bomb, disk wipes, etc.
+    reason: "Destructive shell command blocked by policy."
+
+  # Require human approval before writing outside the current project directory.
+  - name: confirm-writes-outside-cwd
+    action: ask
+    match:
+      tool: "*write*"
+      path_outside: "." # arg path escapes the working directory
+    reason: "Write outside the project directory — confirm before allowing."
+
+  # Ask before the agent reads dotfiles that commonly hold secrets.
+  - name: confirm-read-secrets
+    action: ask
+    match:
+      tool: "*read*"
+      args_regex: "\\.env|\\.aws/credentials|id_rsa|\\.ssh/"
+    reason: "Reading a file that may contain secrets — confirm first."

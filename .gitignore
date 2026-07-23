@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.log
+
+# Local audit logs / runtime state — never commit
+.mcp-firewall/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.tsbuildinfo
+
+# Env
+.env
+.env.*

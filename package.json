@@ -1,0 +1,44 @@
+{
+  "name": "mcp-firewall",
+  "version": "0.0.0",
+  "description": "A local-first security proxy for AI agents. Audit, policy, and detection for MCP tool calls.",
+  "type": "module",
+  "bin": {
+    "mcp-firewall": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "policies",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "ai-agents",
+    "security",
+    "firewall",
+    "audit",
+    "model-context-protocol"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "yaml": "^2.5.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
