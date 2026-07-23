@@ -1,5 +1,5 @@
 /**
- * End-to-end test for the transparent proxy (ROADMAP M1).
+ * End-to-end test for the transparent proxy.
  *
  * Spawns the real CLI wrapping the mock server, drives a full MCP handshake
  * over stdin, and asserts the client gets correct responses back — proving

@@ -1,5 +1,5 @@
 /**
- * Policy engine (ROADMAP M3).
+ * Policy engine.
  *
  * Loads declarative allow/deny/ask rules from YAML and evaluates a tool call
  * against them. Rules are checked top to bottom; the FIRST rule whose matchers

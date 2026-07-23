@@ -2,9 +2,10 @@
 /**
  * mcp-firewall CLI entry point.
  *
- * Subcommands (see docs/ROADMAP.md):
- *   - `wrap`  (M1/M2) ✅ — start the proxy around a real MCP server, auditing calls
- *   - `log`   (M2)    ✅ — pretty-print the audit log
+ * Subcommands:
+ *   - `wrap` — start the proxy around a real MCP server, enforcing policy and
+ *              auditing every tool call
+ *   - `log`  — pretty-print the audit log
  */
 
 import { Proxy, type ProxyHook } from "./proxy.js";
@@ -40,7 +41,7 @@ Usage:
   mcp-firewall log [--file <path>]
       Pretty-print the audit log (default: .mcp-firewall/audit.jsonl).
 
-Docs: see docs/ROADMAP.md for what's built and what's next.
+Docs: see the README and docs/INTEGRATION.md.
 `;
 
 function main(argv: string[]): void {

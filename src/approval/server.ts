@@ -1,5 +1,5 @@
 /**
- * Approval web UI (ROADMAP M4, resolves DESIGN OQ1).
+ * Approval web UI (resolves DESIGN OQ1).
  *
  * When a policy rule says `ask`, the interceptor calls `request()` and awaits a
  * human decision. This server surfaces pending calls in a local web page:

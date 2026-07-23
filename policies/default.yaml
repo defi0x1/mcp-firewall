@@ -1,9 +1,8 @@
 # mcp-firewall policy — starter rules.
 #
 # Rules are evaluated top to bottom; the FIRST match wins. If nothing matches,
-# the `default` action applies. This file is a sketch of the intended shape —
-# the matcher vocabulary is finalized in M3 (see docs/ROADMAP.md). Keep it
-# readable: a human should be able to audit their security posture here.
+# the `default` action applies. Keep it readable: a human should be able to
+# audit their security posture here. See docs/INTEGRATION.md for more examples.
 
 version: 1
 

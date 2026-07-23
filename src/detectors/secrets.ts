@@ -1,5 +1,5 @@
 /**
- * Secrets detector (ROADMAP M4).
+ * Secrets detector.
  *
  * A pure function `(text) => Finding[]` — no I/O, no state (DESIGN D4). It scans
  * text (typically a tool *result* like a fetched web page or a file's contents)

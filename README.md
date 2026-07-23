@@ -210,9 +210,8 @@ The audit log never stores raw secrets, regardless of `--no-redact`.
 
 **v0.1 — early but usable.** Working today: transparent stdio proxy, audit log,
 YAML policy engine (allow/deny/ask), secret detection + redaction, and a
-web-UI approval flow. On the roadmap: prompt-injection detection in results,
-MCP-server scanning, remote (HTTP) transport, and a trace-viewer UI. See
-[docs/ROADMAP.md](docs/ROADMAP.md).
+web-UI approval flow. Ideas for later: prompt-injection detection in results,
+MCP-server scanning, remote (HTTP) transport, and a trace-viewer UI.
 
 ## Contributing
 

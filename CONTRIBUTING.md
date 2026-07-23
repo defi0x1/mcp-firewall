@@ -25,7 +25,7 @@ Node 20+ and pnpm are required.
 | `src/detectors/` | Pure secret detectors + result scanning/redaction |
 | `src/approval/` | Local web-UI approval server |
 | `test-support/` | A mock MCP server used as a test fixture |
-| `docs/` | Architecture, design decisions, roadmap, integration guide |
+| `docs/` | Architecture, design decisions, integration guide |
 
 Start with `docs/ARCHITECTURE.md`, then `docs/DESIGN.md` for the *why* behind
 key choices.

@@ -100,7 +100,7 @@ Windsurf's `mcp_config.json`, etc.). Apply the identical transformation: prepend
 ## Notes & limitations (v0.1)
 
 - **stdio transport only.** Remote (Streamable HTTP) MCP servers aren't wrapped
-  yet — see the roadmap.
+  yet.
 - **One server per firewall.** Wrap each server entry separately.
 - **Approvals need a browser on the same machine.** For fully headless use,
   `--no-open` + open the printed URL yourself, or rely on deny/allow rules only.

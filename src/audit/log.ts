@@ -1,5 +1,5 @@
 /**
- * Audit log — append-only JSONL (ROADMAP M2).
+ * Audit log — append-only JSONL.
  *
  * One JSON object per line. Append-only means it's streamable, greppable, and
  * trivial to build a trace-viewer on later (backlog). We serialize writes

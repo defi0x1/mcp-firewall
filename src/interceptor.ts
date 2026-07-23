@@ -1,5 +1,5 @@
 /**
- * Audit + policy interceptor (ROADMAP M2 + M3).
+ * Audit + policy interceptor.
  *
  * A stateful `ProxyHook` that (a) enforces the policy on each `tools/call` and
  * (b) records every call to the audit log.

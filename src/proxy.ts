@@ -1,5 +1,5 @@
 /**
- * Proxy core — the heart of mcp-firewall (ROADMAP M1).
+ * Proxy core — the heart of mcp-firewall.
  *
  * We sit between an MCP *client* (Claude Code, Cursor, …) and a real MCP
  * *server* (filesystem, shell, …). To make this work we hold TWO transports:

@@ -1,5 +1,5 @@
 /**
- * Detector aggregation + result scanning/redaction (ROADMAP M4).
+ * Detector aggregation + result scanning/redaction.
  *
  * `detectAll` runs every detector over a string. `scanToolResult` walks an MCP
  * tool result's text blocks, collects findings, and (optionally) returns a
