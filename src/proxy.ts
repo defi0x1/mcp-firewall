@@ -38,19 +38,35 @@ export interface UpstreamServer {
 }
 
 /**
+ * Capabilities a hook can use beyond transforming the current message. This is
+ * what lets a policy `deny` (M3) answer the client directly: it drops the
+ * outbound request (returns null) *and* injects a synthetic error response back
+ * to the client via `replyToClient`, so the agent sees a clean "blocked" result
+ * instead of hanging.
+ */
+export interface HookContext {
+  /** Send a message to the client (as if it came from the server). */
+  replyToClient(message: JSONRPCMessage): void;
+  /** Send a message to the upstream server (as if it came from the client). */
+  sendToServer(message: JSONRPCMessage): void;
+}
+
+/**
  * Hooks let later milestones observe or transform traffic. A hook receives a
- * message and returns the message to forward (possibly modified), or `null` to
- * drop it (e.g. a policy `deny` that answers the client directly instead).
+ * message, a direction, and a context, and returns the message to forward
+ * (possibly modified), or `null` to drop it.
  *
  * `direction` tells the hook which way the message is going:
  *   - "c2s" — from client toward the server (requests / notifications)
  *   - "s2c" — from server toward the client (responses / notifications)
  *
- * M1 uses only a passthrough logger. The interceptor (M2+) plugs in here.
+ * M1 uses only a passthrough logger. The audit interceptor (M2) and policy
+ * engine (M3) plug in here.
  */
 export type ProxyHook = (
   message: JSONRPCMessage,
   direction: "c2s" | "s2c",
+  ctx: HookContext,
 ) => JSONRPCMessage | null | Promise<JSONRPCMessage | null>;
 
 export interface ProxyOptions {
@@ -66,6 +82,20 @@ export class Proxy {
   private readonly hooks: ProxyHook[];
   private readonly onClose?: () => void;
   private closed = false;
+
+  /**
+   * Handed to every hook. Stable for the proxy's lifetime — it just wraps the
+   * two transports. `replyToClient` writes to the client-facing transport;
+   * `sendToServer` to the server-facing one.
+   */
+  private readonly hookContext: HookContext = {
+    replyToClient: (message) => {
+      void this.serverTransport.send(message).catch((err) => this.reportError("replyToClient", err));
+    },
+    sendToServer: (message) => {
+      void this.clientTransport.send(message).catch((err) => this.reportError("sendToServer", err));
+    },
+  };
 
   constructor(options: ProxyOptions) {
     this.hooks = options.hooks ?? [];
@@ -127,7 +157,7 @@ export class Proxy {
     try {
       let current: JSONRPCMessage | null = message;
       for (const hook of this.hooks) {
-        current = await hook(current, direction);
+        current = await hook(current, direction, this.hookContext);
         if (current === null) return; // hook consumed/dropped the message
       }
       await destination.send(current);

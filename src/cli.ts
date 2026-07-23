@@ -10,21 +10,25 @@
 import { Proxy, type ProxyHook } from "./proxy.js";
 import { AuditInterceptor } from "./interceptor.js";
 import { AuditLog, defaultAuditPath } from "./audit/log.js";
+import { PolicyEngine } from "./policy/engine.js";
 import { logStderr, describeMessage } from "./log.js";
 import type { AuditRecord } from "./types.js";
 
 const USAGE = `mcp-firewall — a security proxy for AI agents (MCP)
 
 Usage:
-  mcp-firewall wrap [--verbose] -- <server-command...>
-      Run an MCP server behind the firewall. Every tool call is recorded to
-      the audit log (.mcp-firewall/audit.jsonl). Everything after '--' is the
-      command that launches the real server.
+  mcp-firewall wrap [--policy <file>] [--verbose] -- <server-command...>
+      Run an MCP server behind the firewall. Every tool call is checked against
+      the policy (if given) and recorded to the audit log (.mcp-firewall/
+      audit.jsonl). Everything after '--' is the command that launches the real
+      server.
 
       Example:
-        mcp-firewall wrap -- npx -y @modelcontextprotocol/server-filesystem /tmp
+        mcp-firewall wrap --policy policies/default.yaml -- \\
+          npx -y @modelcontextprotocol/server-filesystem /tmp
 
-      --verbose   also log every JSON-RPC message to stderr (proxy passthrough)
+      --policy <file>  YAML policy of allow/deny/ask rules (default: allow all)
+      --verbose        also log every JSON-RPC message to stderr (passthrough)
 
   mcp-firewall log [--file <path>]
       Pretty-print the audit log (default: .mcp-firewall/audit.jsonl).
@@ -37,7 +41,7 @@ function main(argv: string[]): void {
 
   switch (command) {
     case "wrap":
-      runWrap(rest);
+      void runWrap(rest);
       break;
     case "log":
       void runLog(rest);
@@ -56,11 +60,13 @@ function main(argv: string[]): void {
 }
 
 /**
- * `wrap [--verbose] -- <server-command...>` — start the proxy with the audit
- * interceptor. `--verbose` adds the M1 passthrough logger on top.
+ * `wrap [--policy <file>] [--verbose] -- <server-command...>` — start the proxy
+ * with the audit + policy interceptor. `--verbose` adds the passthrough logger.
  */
-function runWrap(args: string[]): void {
+async function runWrap(args: string[]): Promise<void> {
   const verbose = args.includes("--verbose");
+  const policyFlag = args.indexOf("--policy");
+  const policyPath = policyFlag !== -1 ? args[policyFlag + 1] : undefined;
   const sepIndex = args.indexOf("--");
   const serverCmd = sepIndex === -1 ? [] : args.slice(sepIndex + 1);
 
@@ -73,15 +79,30 @@ function runWrap(args: string[]): void {
   const [command, ...serverArgs] = serverCmd;
   const serverName = serverCmd.join(" ");
 
-  // Audit interceptor: record every tool call to the JSONL log, and print a
-  // concise one-liner to stderr as each call completes.
+  // Load the policy if one was given. A bad policy file is fatal — better to
+  // refuse to start than to run a security proxy that silently enforces nothing.
+  let policy: PolicyEngine | undefined;
+  if (policyPath) {
+    try {
+      policy = await PolicyEngine.load(policyPath);
+    } catch (err) {
+      logStderr(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  }
+
+  // Audit + policy interceptor: enforce the policy, record every call, and
+  // print a concise one-liner to stderr per decision.
   const audit = new AuditLog(defaultAuditPath());
   const interceptor = new AuditInterceptor({
     server: serverName,
-    sink: (record) => {
-      void audit.append(record);
+    policy,
+    sink: (record) => void audit.append(record),
+    onDecision: (record) => {
       const status = record.isError ? "error" : `${record.durationMs}ms`;
-      logStderr(`audited: ${record.tool} (${status})`);
+      const tag = record.decision === "deny" ? "BLOCKED" : record.decision.toUpperCase();
+      const ruleText = record.rule ? ` [${record.rule}]` : "";
+      logStderr(`${tag} ${record.tool} (${status})${ruleText}`);
     },
   });
 
@@ -111,6 +132,7 @@ function runWrap(args: string[]): void {
   });
 
   logStderr(`wrapping: ${serverName}`);
+  logStderr(`policy: ${policyPath ?? "(none — allowing all)"}`);
   logStderr(`audit log: ${defaultAuditPath()}`);
 }
 

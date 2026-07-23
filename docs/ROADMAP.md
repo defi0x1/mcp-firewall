@@ -68,20 +68,28 @@ Goal: every tool call is recorded.
 
 ---
 
-## M3 — Policy engine
+## M3 — Policy engine ✅ DONE
 
 Goal: allow / deny rules from YAML actually block calls.
 
-- [ ] `policies/default.yaml`: starter rules (deny destructive shell, ask on writes outside cwd)
-- [ ] `src/policy/engine.ts`: load YAML, evaluate a `ToolCall` → `allow | deny | ask`
-- [ ] Matchers: tool-name glob, arg substring/regex, path-scope predicate
-- [ ] On `deny`: interceptor returns an MCP error result (D6), still audits
-- [ ] `--policy <file>` CLI flag
-- [ ] Unit tests: each matcher; deny path returns a proper error
+- [x] `policies/default.yaml`: starter rules (deny destructive shell, ask on secret reads/writes) — matcher vocabulary now finalized
+- [x] `src/policy/engine.ts`: load + zod-validate YAML, evaluate a tool call → `allow | deny | ask`
+- [x] Matchers: tool-name glob (`globToRegex`), `args_regex`, `path_outside` (path-scope)
+- [x] On `deny`: interceptor synthesizes an MCP `isError` result (D6), replies to client, blocks forwarding, and audits `decision: "deny"`
+- [x] `--policy <file>` CLI flag (bad policy = refuse to start)
+- [x] Unit tests: each matcher + eval order (`src/policy/engine.test.ts`, 12); deny/allow paths (`src/interceptor.test.ts`); deny path end-to-end (`src/proxy.e2e.test.ts`)
 
-**Verify:** A rule `deny bash("rm *")` blocks that call (agent gets a clear error) while other calls pass; the block is in the audit log with `decision: "deny"`.
+**Verify:** ✅ Demo run: `rm -rf` blocked (client gets "⛔ Blocked by mcp-firewall policy…", never reaches server), `ls`/`echo` pass; audit log shows `[DENY]`. `pnpm test` (21) + typecheck clean.
 
-**Milestone demo:** "Watch the firewall block `rm -rf` in real time."
+**Implementation notes for the next session:**
+- The proxy gained a **`HookContext`** (`replyToClient` / `sendToServer`) — this is how a hook answers the client without forwarding. M4's approval flow reuses `replyToClient` the same way.
+- **`ask` is NOT yet enforced.** In M3 an `ask` rule is recorded with `decision: "ask"` and the call is *still forwarded* (there's no approval UI yet). M4 makes `ask` actually block until the human approves. When you build M4, the change is in `AuditInterceptor.onOutbound`: the `ask` branch currently falls through to "pend + forward"; it needs to hold the call and wait for a decision (resolve OQ1 first — how the prompt reaches the human).
+- Matchers live in `src/policy/engine.ts` and are exported (`globToRegex`, `matchesPathOutside`) for direct unit testing. Keep new matchers pure + exported.
+- The interceptor's deny path writes the audit record **eagerly** (no response will come); allow/ask records are written on the response. Don't "unify" these — they're genuinely different lifecycles.
+
+**Milestone demo:** "Watch the firewall block `rm -rf` in real time." ✅
+
+**→ Next session starts at M4 (secrets detector + approval flow).**
 
 ---
 

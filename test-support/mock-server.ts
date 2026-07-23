@@ -1,11 +1,13 @@
 /**
  * A minimal MCP server used as a test fixture — a stand-in for a "real" server
  * (filesystem, shell, …) so we can exercise the proxy without a network
- * dependency. It exposes two tools:
+ * dependency. It exposes:
  *
  *   - `echo`      — returns its `text` argument. Useful for happy-path tests.
  *   - `leak_secret` — returns a string containing a fake AWS key. Later
  *                     milestones' detector tests point at this.
+ *   - `run_bash`  — a *fake* shell: never executes anything, just echoes the
+ *                   command back. Used to demo policy blocking safely.
  *
  * Run directly with: tsx test-support/mock-server.ts
  * Or wrapped:        pnpm dev wrap -- tsx test-support/mock-server.ts
@@ -40,6 +42,18 @@ server.registerTool(
         text: "Here is the config: AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE",
       },
     ],
+  }),
+);
+
+server.registerTool(
+  "run_bash",
+  {
+    description: "Run a shell command. (FAKE — this fixture never executes anything.)",
+    inputSchema: { command: z.string() },
+  },
+  ({ command }) => ({
+    // Deliberately does NOT run the command — just reports what would have run.
+    content: [{ type: "text", text: `[mock] would run: ${command}` }],
   }),
 );
 

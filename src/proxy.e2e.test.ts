@@ -19,6 +19,7 @@ const repoRoot = resolve(here, "..");
 const tsxBin = resolve(repoRoot, "node_modules/.bin/tsx");
 const cli = resolve(repoRoot, "src/cli.ts");
 const mockServer = resolve(repoRoot, "test-support/mock-server.ts");
+const defaultPolicy = resolve(repoRoot, "policies/default.yaml");
 
 const PROTOCOL_VERSION = "2025-11-25";
 
@@ -33,11 +34,11 @@ interface JsonRpcResponse {
  * newline-delimited responses printed to stdout. Resolves when the process
  * exits (we close stdin, which triggers the proxy's clean shutdown).
  */
-function runProxy(messages: object[]): Promise<JsonRpcResponse[]> {
+function runProxy(messages: object[], wrapArgs: string[] = []): Promise<JsonRpcResponse[]> {
   return new Promise((resolvePromise, reject) => {
     // Run in a throwaway cwd so the audit log (.mcp-firewall/) doesn't land in
     // the repo. Absolute paths above mean cwd doesn't affect resolution.
-    const child = spawn(tsxBin, [cli, "wrap", "--", tsxBin, mockServer], {
+    const child = spawn(tsxBin, [cli, "wrap", ...wrapArgs, "--", tsxBin, mockServer], {
       cwd: mkdtempSync(resolve(tmpdir(), "mcp-fw-e2e-")),
       stdio: ["pipe", "pipe", "inherit"],
     });
@@ -96,7 +97,7 @@ describe("transparent proxy (M1)", () => {
     // tools/list → both mock tools are visible, unmodified
     const list = byId.get(2);
     const tools = (list?.result?.tools ?? []) as Array<{ name: string }>;
-    expect(tools.map((t) => t.name).sort()).toEqual(["echo", "leak_secret"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["echo", "leak_secret", "run_bash"]);
 
     // tools/call echo → argument round-trips through the proxy verbatim
     const call = byId.get(3);
@@ -105,5 +106,54 @@ describe("transparent proxy (M1)", () => {
       type: "text",
       text: "hello through the firewall",
     });
+  }, 30_000);
+});
+
+describe("policy enforcement end-to-end (M3)", () => {
+  it("blocks a denied call and lets others through", async () => {
+    const responses = await runProxy(
+      [
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: PROTOCOL_VERSION,
+            capabilities: {},
+            clientInfo: { name: "e2e-policy", version: "0.0.0" },
+          },
+        },
+        { jsonrpc: "2.0", method: "notifications/initialized" },
+        // denied by policies/default.yaml (block-destructive-shell)
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "run_bash", arguments: { command: "rm -rf /data" } },
+        },
+        // allowed — same tool, harmless command
+        {
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: { name: "run_bash", arguments: { command: "ls -la" } },
+        },
+      ],
+      ["--policy", defaultPolicy],
+    );
+
+    const byId = new Map(responses.map((r) => [r.id, r]));
+
+    // The denied call gets a synthetic isError result — the agent sees the block
+    const denied = byId.get(2);
+    expect(denied?.result?.isError).toBe(true);
+    const deniedContent = (denied?.result?.content ?? []) as Array<{ text: string }>;
+    expect(deniedContent[0]!.text).toContain("Blocked by mcp-firewall");
+
+    // The allowed call reached the mock server and came back normally
+    const allowed = byId.get(3);
+    expect(allowed?.result?.isError).toBeFalsy();
+    const allowedContent = (allowed?.result?.content ?? []) as Array<{ text: string }>;
+    expect(allowedContent[0]!.text).toContain("would run: ls -la");
   }, 30_000);
 });

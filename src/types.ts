@@ -27,6 +27,8 @@ export interface AuditRecord {
   tool: string;
   args: unknown;
   decision: Decision;
+  rule?: string; // name of the policy rule that decided this (if any matched)
+  reason?: string; // human explanation for a deny/ask
   approved?: boolean; // set only for `ask` decisions
   findings: Finding[];
   durationMs?: number; // request → response wall time
