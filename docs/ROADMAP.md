@@ -21,19 +21,26 @@ The plan a future session follows to build this to a working v0.1 and beyond. Wo
 
 ---
 
-## M1 — Transparent stdio proxy (the core)
+## M1 — Transparent stdio proxy (the core) ✅ DONE
 
 Goal: real Claude Code ↔ MCP traffic flows *through our code*, unmodified. This is the foundation; everything else hooks into it.
 
-- [ ] `src/proxy.ts`: spawn the real server as a subprocess; create an MCP `Server` facing the client and an MCP `Client` facing the upstream
-- [ ] Forward every request/response/notification in both directions untouched
-- [ ] `src/cli.ts`: `mcp-firewall wrap -- <server-cmd...>` launches the proxy
-- [ ] Manual test: wrap the official `@modelcontextprotocol/server-filesystem`, point Claude Code (or MCP Inspector) at the firewall, confirm tools work end-to-end
-- [ ] Log a one-line "passthrough: <method>" to stderr for every message (temporary, proves flow)
+- [x] `src/proxy.ts`: spawn the real server as a subprocess; bridge two stdio transports (server-facing + client-facing)
+- [x] Forward every request/response/notification in both directions untouched
+- [x] `src/cli.ts`: `mcp-firewall wrap -- <server-cmd...>` launches the proxy
+- [x] End-to-end test with a mock server (`test-support/mock-server.ts`) instead of MCP Inspector — repeatable, no network dep (`src/proxy.e2e.test.ts`)
+- [x] Log a one-line passthrough entry to stderr for every message (temporary, proves flow)
 
-**Verify:** Using MCP Inspector, `tools/list` and a `tools/call` against a wrapped filesystem server return correct results, and stderr shows the passthrough lines.
+**Verify:** ✅ `pnpm test` drives a full handshake (`initialize` → `tools/list` → `tools/call`) through the proxy and asserts correct responses; stderr shows passthrough lines; proxy exits cleanly on stdin EOF.
+
+**Implementation notes for the next session:**
+- Built at the **transport** layer (two `Stdio*Transport`s wired together), *not* the high-level `Server`/`Client` classes — this keeps forwarding truly transparent (no per-method schema parsing). See the header comment in `src/proxy.ts`.
+- `Proxy` takes a `hooks: ProxyHook[]` array. **The audit interceptor (M2) and policy (M3) plug in here** — a hook is `(message, direction) => message | null`; returning `null` drops the message (that's how a policy `deny` will answer the client directly). The M1 passthrough logger in `cli.ts` is the example to replace/augment.
+- Gotcha fixed: the SDK's `StdioServerTransport` never fires `onclose` on stdin EOF (only listens for `data`/`error`). The proxy adds its own `process.stdin.on("end"/"close")` handlers so it shuts down when the client disconnects. Don't remove those.
 
 **Milestone demo:** "The agent can't tell the firewall is there — yet."
+
+**→ Next session starts at M2 (audit log).**
 
 ---
 

@@ -45,4 +45,4 @@ pnpm build      # tsc → dist/
 
 ## Current state
 
-M0 complete (scaffolding, docs, toolchain, CLI stub, first commit). **Next: M1 — the transparent stdio proxy.** Start there.
+M0 + M1 complete. The transparent stdio proxy works and is covered by an e2e test (`src/proxy.e2e.test.ts`). Traffic flows through `src/proxy.ts` via a `hooks` array — the extension point for everything else. **Next: M2 — the audit log** (add an interceptor hook that records every `tools/call` to JSONL). Read `docs/ROADMAP.md` M1's "Implementation notes" before starting M2.

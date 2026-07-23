@@ -50,6 +50,14 @@ Each entry: the decision, the reasoning, and the alternatives we rejected. When 
 
 **Why:** Streamable, greppable, replayable, and trivial to build a trace-viewer UI on later. No schema migrations, no database dependency for v0.1.
 
+## D8. Bridge at the transport layer, not the high-level Client/Server classes
+
+**Decision (M1):** The proxy wires two SDK `Transport`s together directly (`StdioServerTransport` ↔ `StdioClientTransport`) and forwards raw `JSONRPCMessage`s, rather than instantiating the SDK's high-level `Server`/`Client` classes with registered per-method handlers.
+
+**Why:** The high-level classes parse and validate each method against its schema and expect you to *handle* requests. For a transparent proxy we want the opposite — forward every message (including methods and future protocol extensions we don't know about) untouched. The `Transport` interface (`send` / `onmessage`) is exactly a byte-faithful pipe. This makes the proxy forward-compatible with protocol additions and keeps the security logic (hooks) separate from protocol plumbing.
+
+**Consequence / gotcha:** `StdioServerTransport` only listens for stdin `data`/`error`, so it never fires `onclose` on EOF. The proxy adds its own `process.stdin` end/close handlers to shut down when the client disconnects. (Recorded here so it isn't "cleaned up" later as dead code.)
+
 ## Open questions (decide as we build)
 
 - **OQ1.** How does the `ask` approval prompt reach the human when the client owns the terminal (stdio)? Options: a separate TTY, a desktop notification, a local web UI on a port. — *Leaning: local web UI, decided at M4.*
