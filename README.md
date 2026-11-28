@@ -47,6 +47,18 @@ guard doctor --fix all     # check and fix your setup
 
 More: `guard --help`.
 
+## Strictness
+
+`guard level relaxed | recommended | strict` (default: recommended). The 🔴 rows above ask at every level.
+
+| | relaxed | recommended | strict |
+|---|---|---|---|
+| `curl ... \| sh` | 🟡 | 🟡 | 🔴 |
+| Repo with its own git hooks | log only | 🟡 | 🔴 |
+| "Ignore previous instructions" in a result | log only | 🟡 | 🟡 |
+| Session read web + private data, then sends out | log only | 🟡 | 🔴 |
+| Reading `.env` | log only | log only | 🟡 |
+
 ## Hardened mode
 
 `sudo guard install --hardened` locks it in root-owned settings with Claude Code's sandbox:
