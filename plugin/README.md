@@ -6,7 +6,8 @@ alternative to running `guard install`. Use one or the other, not both, or every
 ## Requirements
 
 The hooks run `guard hook`, so the `guard` binary must be on the `PATH` that Claude Code sees.
-Install it first (`cargo install --git https://github.com/defi0x1/agent-guard`) and check it with
+Install it first (the install script in the main [README](../README.md#install), or
+`cargo install --locked --git https://github.com/defi0x1/agent-guard`) and check it with
 `guard --version`.
 
 The PreToolUse hook sets `onFailure: "block"`: if `guard` is missing, crashes or times out, the
