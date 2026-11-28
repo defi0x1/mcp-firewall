@@ -296,7 +296,7 @@ impl App {
             .enumerate()
             .rev()
             .map(|(i, e)| (i + self.dropped, e))
-            .filter(|(i, e)| *i < id && e.session == session)
+            .filter(|(i, e)| *i < id && e.session == session && e.source != "PostToolUse")
             .take(n)
             .map(|(_, e)| e)
             .collect()

@@ -209,8 +209,17 @@ fn header_line(app: &App, width: u16) -> Line<'static> {
     let mut spans = left;
     if room >= 6 {
         let counts = calls::buckets(recent(), app.now, SPARK_BUCKET, SPARK_BUCKETS);
-        let chart = calls::sparkline(&counts[SPARK_BUCKETS - room..]);
-        spans.push(Span::styled(chart, fg(app.color, |t| t.purple)));
+        let shown = &counts[SPARK_BUCKETS - room..];
+        let chart = calls::sparkline(shown);
+        // Quiet stretches are dim, so the chart reads as bursts and not as a progress bar.
+        for (bar, n) in chart.chars().zip(shown) {
+            let style = if *n == 0 {
+                dim(app.color)
+            } else {
+                fg(app.color, |t| t.purple)
+            };
+            spans.push(Span::styled(bar.to_string(), style));
+        }
         spans.push(Span::raw(" "));
     }
     spans.extend(right);
@@ -314,9 +323,10 @@ fn draw_detail(f: &mut Frame, body: Rect, app: &App, call: &Call) {
         vertical: 1,
     });
     let bold = Style::default().add_modifier(Modifier::BOLD);
+    let label = dim(app.color);
     let field = |name: &str, value: String| {
         Line::from(vec![
-            Span::styled(format!("{name:<9}"), bold),
+            Span::styled(format!("{name:<9}"), label),
             Span::raw(value),
         ])
     };
@@ -369,7 +379,7 @@ fn draw_detail(f: &mut Frame, body: Rect, app: &App, call: &Call) {
         }
     }
     if !rules.is_empty() {
-        lines.push(Line::styled("Rules", bold));
+        lines.push(Line::styled("Rules", label.add_modifier(Modifier::BOLD)));
         let all = checks::all_rules();
         for r in rules {
             let line = match all.iter().find(|(id, _)| id == r) {
@@ -382,7 +392,10 @@ fn draw_detail(f: &mut Frame, body: Rect, app: &App, call: &Call) {
     lines.push(field("Process", chain(app, e)));
     let earlier = app.earlier_in_session(call.id, 5);
     if !earlier.is_empty() {
-        lines.push(Line::styled("Earlier in this session", bold));
+        lines.push(Line::styled(
+            "Earlier in this session",
+            label.add_modifier(Modifier::BOLD),
+        ));
         for p in earlier {
             lines.push(Line::from(vec![
                 Span::raw(format!("  {} ", data::clock(p.ts, app.offset))),

@@ -172,7 +172,7 @@ fn draw_pane(f: &mut Frame, area: Rect, app: &App, call: Option<&Call>) {
     let level = data::bucket(c.level);
     let why = calls::why(main);
     let head = if why.is_empty() {
-        "nothing found".to_string()
+        "no issues".to_string()
     } else {
         why
     };
