@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- Warnings about paste, webhook and tunnel sites no longer suggest whitelisting them.
+
 ## 0.4.0
 
 - Release archives carry a build provenance attestation: `gh attestation verify <archive> --repo defi0x1/agent-guard`.
