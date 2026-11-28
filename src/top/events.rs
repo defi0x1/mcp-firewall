@@ -2,17 +2,17 @@
 //! selected call when the terminal is wide enough.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState, Wrap};
+use ratatui::widgets::{Cell, Paragraph, Row, Table, TableState, Wrap};
 
 use crate::audit::{Event, clip};
 use crate::level::Level;
 use crate::top::app::App;
 use crate::top::calls::{self, Call};
 use crate::top::data;
-use crate::top::ui::{chain, level_style, level_word, selected_style};
+use crate::top::ui::{chain, dim, fg, level_style, level_word, panel, selected_style};
 
 /// Narrower than this, the detail pane is left out.
 pub const DETAIL_MIN: u16 = 110;
@@ -22,6 +22,10 @@ const DETAIL_WIDTH: u16 = 44;
 
 /// Draws the calls `rows` (newest first) as a list, with the selected one's detail beside it.
 pub fn draw(f: &mut Frame, area: Rect, app: &App, rows: &[Call], title: &str) {
+    if rows.is_empty() && title.contains("Alerts") {
+        calm(f, area, app);
+        return;
+    }
     let selected = app.selected(rows.len());
     let list = if area.width >= DETAIL_MIN {
         let [list, detail] =
@@ -61,8 +65,8 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App, rows: &[Call], title: &str) {
         title.push_str("by agent ");
     }
     let table = Table::new(table_rows, widths)
-        .row_highlight_style(selected_style())
-        .block(Block::default().borders(Borders::ALL).title(title));
+        .row_highlight_style(selected_style(app.color))
+        .block(panel(app.color, true, &title));
     let mut state = TableState::default().with_selected(Some(selected));
     f.render_stateful_widget(table, list, &mut state);
 }
@@ -105,7 +109,7 @@ fn row<'a>(app: &App, c: &Call, cols: &Cols) -> Option<Row<'a>> {
     let level = data::bucket(c.level);
     let tint = level_style(level, app.color);
     let (mark, why) = if level == Level::Green {
-        (Span::raw("·"), Span::raw(""))
+        (Span::styled("·", dim(app.color)), Span::raw(""))
     } else {
         (
             Span::styled("●", tint.add_modifier(Modifier::BOLD)),
@@ -117,25 +121,40 @@ fn row<'a>(app: &App, c: &Call, cols: &Cols) -> Option<Row<'a>> {
     } else {
         data::clock(c.ts, app.offset)
     };
-    let mut cells = vec![Cell::from(mark), Cell::from(time)];
+    let mut cells = vec![
+        Cell::from(mark),
+        Cell::from(Span::styled(time, dim(app.color))),
+    ];
     if cols.with_agent {
-        cells.push(Cell::from(clip(&agent_label(first), 10)));
+        let who = Span::styled(
+            clip(&agent_label(first), 10),
+            if first.agent_type.is_some() {
+                fg(app.color, |t| t.pink)
+            } else {
+                Style::default()
+            },
+        );
+        cells.push(Cell::from(who));
     }
+    // The icon takes the tool color; the label stays plain.
+    let label = calls::label(first);
+    let icon = calls::icon(first);
     cells.extend([
-        Cell::from(clip(
-            &format!("{} {}", calls::icon(first), calls::label(first)),
-            cols.what,
-        )),
+        Cell::from(Line::from(vec![
+            Span::styled(format!("{icon} "), fg(app.color, |t| t.cyan)),
+            Span::raw(clip(
+                &label,
+                cols.what.saturating_sub(icon.chars().count() + 1),
+            )),
+        ])),
         Cell::from(Line::from(why)),
-        Cell::from(done_mark(app, c, first)),
+        Cell::from(Span::styled(done_mark(app, c, first), dim(app.color))),
     ]);
     let style = match app.fresh(c) {
-        Some(0) if app.color => Style::default()
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD),
+        Some(0) if app.color => selected_style(true).add_modifier(Modifier::BOLD),
         Some(0) => Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
         Some(_) => Style::default().add_modifier(Modifier::BOLD),
-        None if level == Level::Green => Style::default().add_modifier(Modifier::DIM),
+        None if level == Level::Green && !app.color => Style::default().add_modifier(Modifier::DIM),
         None => Style::default(),
     };
     Some(Row::new(cells).style(style))
@@ -144,7 +163,7 @@ fn row<'a>(app: &App, c: &Call, cols: &Cols) -> Option<Row<'a>> {
 /// The selected call in short: level and reason, what it did, the full message, the process,
 /// the agent and session, the rule ids, and the keys that act on it.
 fn draw_pane(f: &mut Frame, area: Rect, app: &App, call: Option<&Call>) {
-    let block = Block::default().borders(Borders::ALL).title(" Detail ");
+    let block = panel(app.color, false, " Detail ");
     let Some((c, first, main)) = call.and_then(|c| Some((c, app.event(c.id)?, app.event(c.main)?)))
     else {
         f.render_widget(Paragraph::new("Nothing selected.").block(block), area);
@@ -157,33 +176,54 @@ fn draw_pane(f: &mut Frame, area: Rect, app: &App, call: Option<&Call>) {
     } else {
         why
     };
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let label = dim(app.color);
+    let chip = if app.color && level != Level::Green {
+        let t = crate::top::theme::get();
+        let bg = if level == Level::Red { t.red } else { t.orange };
+        Style::default()
+            .bg(bg)
+            .fg(t.bg)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        level_style(level, app.color).add_modifier(Modifier::BOLD)
+    };
     let mut lines = vec![
         Line::from(vec![
+            Span::styled(format!(" {} ", level_word(c.level).to_uppercase()), chip),
             Span::styled(
-                format!("{} ", level_word(c.level).to_uppercase()),
-                level_style(level, app.color).add_modifier(Modifier::BOLD),
+                format!(" {head}"),
+                Style::default().add_modifier(Modifier::BOLD),
             ),
-            Span::raw(head.clone()),
         ]),
-        Line::raw(format!("{} {}", calls::icon(first), calls::label(first))),
+        Line::raw(""),
+        Line::from(vec![
+            Span::styled(
+                format!("{} ", calls::icon(first)),
+                fg(app.color, |t| t.cyan),
+            ),
+            Span::raw(calls::label(first)),
+        ]),
     ];
     let msg = calls::message(main);
     if !msg.is_empty() && msg.trim_end_matches('.') != head {
         lines.push(Line::raw(msg.to_string()));
     }
-    lines.push(Line::raw(format!("process {}", chain(app, first))));
-    let mut who = match &first.agent_type {
+    lines.push(Line::raw(""));
+    let field = |name: &str, value: String| {
+        Line::from(vec![
+            Span::styled(format!("{name:<9}"), label),
+            Span::raw(value),
+        ])
+    };
+    lines.push(field("process", chain(app, first)));
+    let who = match &first.agent_type {
         Some(t) => format!("{} › {t}", first.agent),
         None => first.agent.clone(),
     };
+    lines.push(field("agent", who));
     if !first.session.is_empty() {
-        who.push_str(&format!(
-            "  session {}",
-            data::short_session(&first.session)
-        ));
+        lines.push(field("session", data::short_session(&first.session)));
     }
-    lines.push(Line::styled(who, dim));
     let mut rules: Vec<&str> = Vec::new();
     for r in first.rules.iter().chain(&main.rules) {
         if !rules.contains(&r.as_str()) {
@@ -191,9 +231,10 @@ fn draw_pane(f: &mut Frame, area: Rect, app: &App, call: Option<&Call>) {
         }
     }
     if !rules.is_empty() {
-        lines.push(Line::styled(format!("rules {}", rules.join(", ")), dim));
+        lines.push(field("rule", rules.join(", ")));
     }
-    lines.push(Line::styled(
+    lines.push(field(
+        "time",
         format!(
             "{}  {}",
             data::clock(c.ts, app.offset),
@@ -205,14 +246,38 @@ fn draw_pane(f: &mut Frame, area: Rect, app: &App, call: Option<&Call>) {
                 d => format!("done in {d}"),
             }
         ),
-        dim,
     ));
-    lines.push(Line::raw(""));
-    lines.push(Line::styled("t trust  b block  e explain  k kill", dim));
     f.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .block(block),
+        area,
+    );
+}
+
+/// The Alerts tab with nothing waiting: say so, and how much was checked.
+fn calm(f: &mut Frame, area: Rect, app: &App) {
+    let hour = app.now.saturating_sub(data::HOUR);
+    let checked = app
+        .calls()
+        .iter()
+        .rev()
+        .take_while(|c| c.ts >= hour)
+        .count();
+    let pad = area.height.saturating_sub(4) / 2;
+    let mut lines = vec![Line::raw(""); usize::from(pad)];
+    lines.push(Line::styled(
+        "✓  Nothing needs you.",
+        level_style(Level::Green, app.color).add_modifier(Modifier::BOLD),
+    ));
+    lines.push(Line::styled(
+        format!("{checked} calls checked in the last hour."),
+        dim(app.color),
+    ));
+    f.render_widget(
+        Paragraph::new(lines)
+            .alignment(Alignment::Center)
+            .block(panel(app.color, true, " Alerts ")),
         area,
     );
 }

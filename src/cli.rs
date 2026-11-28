@@ -23,7 +23,11 @@ enum Cmd {
     #[command(hide = true)]
     Hook,
     /// Live view of every agent's tool calls, processes and connections.
-    Top,
+    Top {
+        /// `dark` (Dracula) or `light` (Alucard). Follows the terminal if not set.
+        #[arg(long)]
+        theme: Option<String>,
+    },
     /// One line for Claude Code's status line.
     #[command(hide = true)]
     Statusline {
@@ -132,7 +136,7 @@ enum TrustCmd {
 pub fn run() -> anyhow::Result<()> {
     match Cli::parse().cmd {
         Cmd::Hook => hook::run(),
-        Cmd::Top => top::run(),
+        Cmd::Top { theme } => top::run(theme.as_deref()),
         Cmd::Statusline { wrap } => crate::statusline::run(wrap),
         Cmd::Doctor { fix, undo } => doctor::run(fix.as_deref(), undo),
         Cmd::Scan => scan::run(),

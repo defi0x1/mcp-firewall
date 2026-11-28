@@ -7,6 +7,7 @@ mod events;
 mod network;
 mod processes;
 pub mod procs;
+mod theme;
 mod ui;
 
 use std::time::{Duration, Instant};
@@ -24,7 +25,8 @@ const TAIL_EVERY: Duration = Duration::from_millis(500);
 const PROCS_EVERY: Duration = Duration::from_secs(2);
 
 /// Runs the live view until the user quits. The terminal is restored on exit and on panic.
-pub fn run() -> anyhow::Result<()> {
+pub fn run(theme: Option<&str>) -> anyhow::Result<()> {
+    theme::init(theme);
     let path = audit::path()?;
     let now = home::now();
     let (events, end) = data::read_back(&path, now.saturating_sub(data::DAY), |e: &Event| e.ts)?;
@@ -100,7 +102,7 @@ fn apply(action: Action, app: &mut App, monitor: &Monitor) {
         }
         Action::Trust(host) => {
             trust(&mut config, &host);
-            (config.save(), format!("Trusted {host}."))
+            (config.save(), format!("Whitelisted {host}."))
         }
         Action::Block(host) => {
             block(&mut config, &host);

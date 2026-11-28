@@ -3,7 +3,7 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Borders, Row, Table, TableState};
+use ratatui::widgets::{Row, Table, TableState};
 
 use crate::text::term_safe;
 use crate::top::app::App;
@@ -48,8 +48,8 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
             Row::new(["pid", "name", "cpu%", "activity", "conns", "last remote"])
                 .style(Style::default().add_modifier(Modifier::BOLD)),
         )
-        .row_highlight_style(selected_style())
-        .block(Block::default().borders(Borders::TOP).title(title));
+        .row_highlight_style(selected_style(app.color))
+        .block(crate::top::ui::panel(app.color, true, title));
     let mut state = TableState::default().with_selected(Some(app.selected(app.snap.rows.len())));
     f.render_stateful_widget(table, area, &mut state);
 }

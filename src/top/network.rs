@@ -3,7 +3,7 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Borders, Row, Table, TableState};
+use ratatui::widgets::{Row, Table, TableState};
 
 use crate::top::app::App;
 use crate::top::data;
@@ -67,8 +67,8 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
             ])
             .style(Style::default().add_modifier(Modifier::BOLD)),
         )
-        .row_highlight_style(selected_style())
-        .block(Block::default().borders(Borders::TOP).title(" Network "));
+        .row_highlight_style(selected_style(app.color))
+        .block(crate::top::ui::panel(app.color, true, " Network "));
     let mut state = TableState::default().with_selected(Some(app.selected(hosts.len())));
     f.render_stateful_widget(table, area, &mut state);
 }

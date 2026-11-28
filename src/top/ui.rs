@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use crate::audit::clip;
 use crate::checks;
@@ -12,15 +12,54 @@ use crate::level::Level;
 use crate::top::app::{App, Mode, Tab};
 use crate::top::calls::{self, Call};
 use crate::top::data::{self, HOUR};
+use crate::top::theme::{self, Theme};
 use crate::top::{events, network, processes};
 
 /// The header's chart: calls per 10 seconds over the last 10 minutes.
 const SPARK_BUCKET: u64 = 10;
 const SPARK_BUCKETS: usize = 60;
-const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/// A foreground color from the theme, or plain when colors are off.
+pub fn fg(color: bool, c: fn(&Theme) -> Color) -> Style {
+    if color {
+        Style::default().fg(c(theme::get()))
+    } else {
+        Style::default()
+    }
+}
+
+/// Dim text: the theme's comment color, or the terminal's dim without colors.
+pub fn dim(color: bool) -> Style {
+    if color {
+        fg(true, |t| t.comment)
+    } else {
+        Style::default().add_modifier(Modifier::DIM)
+    }
+}
+
+/// A list's border: rounded, purple when it has the focus.
+pub fn panel(color: bool, focused: bool, title: &str) -> Block<'static> {
+    let border = if focused {
+        fg(color, |t| t.purple)
+    } else {
+        dim(color)
+    };
+    Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(border)
+        .title(Span::styled(title.to_string(), border))
+}
 
 /// Draws the whole screen.
 pub fn draw(f: &mut Frame, app: &App) {
+    if app.color {
+        let t = theme::get();
+        f.render_widget(
+            Block::default().style(Style::default().bg(t.bg).fg(t.fg)),
+            f.area(),
+        );
+    }
     let [header, tabs, body, footer] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
@@ -47,10 +86,11 @@ pub fn level_style(level: Level, color: bool) -> Style {
     if !color {
         return Style::default();
     }
+    let t = theme::get();
     Style::default().fg(match level {
-        Level::Green => Color::Green,
-        Level::Yellow => Color::Yellow,
-        Level::Red | Level::HardBlock => Color::Red,
+        Level::Green => t.green,
+        Level::Yellow => t.orange,
+        Level::Red | Level::HardBlock => t.red,
     })
 }
 
@@ -74,27 +114,34 @@ pub fn level_span(level: Option<Level>, color: bool) -> Span<'static> {
     )
 }
 
-/// The style of the selected row.
-pub fn selected_style() -> Style {
-    Style::default().add_modifier(Modifier::REVERSED)
+/// The style of the selected row: the theme's current-line background, or reversed.
+pub fn selected_style(color: bool) -> Style {
+    if color {
+        Style::default().bg(theme::get().line)
+    } else {
+        Style::default().add_modifier(Modifier::REVERSED)
+    }
 }
 
 /// The header: state, calls checked in the last hour, the call rate as a chart and per minute,
-/// counts by level, whether the list follows new calls, and a spinner with the last event's age.
+/// counts by level, whether the list follows new calls, and a dot that blinks while live.
 fn header_line(app: &App, width: u16) -> Line<'static> {
     let hour = app.now.saturating_sub(HOUR);
     let mut c = data::Counts::default();
     for call in app.calls().iter().rev().take_while(|c| c.ts >= hour) {
         c.add(call.level);
     }
-    let bold = Style::default().add_modifier(Modifier::BOLD);
     let state = match app.paused_until {
+        Some(until) if until == crate::pause::OFF => Span::styled(
+            "Off",
+            level_style(Level::Red, app.color).add_modifier(Modifier::BOLD),
+        ),
         Some(until) => Span::styled(
             format!("paused until {}", data::clock(until, app.offset)),
             level_style(Level::Yellow, app.color).add_modifier(Modifier::BOLD),
         ),
         None => Span::styled(
-            "ON",
+            "On",
             level_style(Level::Green, app.color).add_modifier(Modifier::BOLD),
         ),
     };
@@ -107,40 +154,47 @@ fn header_line(app: &App, width: u16) -> Line<'static> {
             .map(|c| c.ts)
     };
     let per_min = recent().filter(|t| t + 60 > app.now).count();
-    let follow = if app.frozen.is_some() {
-        Span::styled("‖ paused", level_style(Level::Yellow, app.color))
-    } else {
-        Span::raw("▸▸ auto")
-    };
-    let last = match app.last_event() {
-        Some(ts) => format!("last event {} ago", data::ago(ts, app.now)),
-        None => "no events yet".into(),
-    };
-    let spin = SPINNER[(app.tick % SPINNER.len() as u64) as usize];
+    let dimmed = dim(app.color);
     let left = vec![
-        Span::styled("◆ guard ", bold),
+        Span::styled(
+            "◆ guard ",
+            fg(app.color, |t| t.purple).add_modifier(Modifier::BOLD),
+        ),
         state,
-        Span::raw(format!("  {} checked  ", c.red + c.yellow + c.green)),
+        Span::styled(
+            format!("  {} checked  ", c.red + c.yellow + c.green),
+            dimmed,
+        ),
     ];
     let mut right = vec![
-        Span::raw(format!("{per_min}/min   ")),
-        Span::styled("● ", level_style(Level::Red, app.color)),
-        Span::raw(format!("{} ", c.red)),
-        Span::styled("● ", level_style(Level::Yellow, app.color)),
-        Span::raw(format!("{} ", c.yellow)),
-        Span::styled("● ", level_style(Level::Green, app.color)),
-        Span::raw(format!("{}   ", c.green)),
-        follow,
-        Span::raw(format!("   {spin} live · {last}")),
+        Span::styled(format!("{per_min}/min    "), dimmed),
+        Span::styled(format!("● {}  ", c.red), level_style(Level::Red, app.color)),
+        Span::styled(
+            format!("● {}  ", c.yellow),
+            level_style(Level::Yellow, app.color),
+        ),
+        Span::styled(
+            format!("● {}", c.green),
+            level_style(Level::Green, app.color),
+        ),
     ];
-    let mut used: usize = left.iter().chain(&right).map(Span::width).sum();
-    if used > usize::from(width)
-        && let Some(tail) = right.last_mut()
-    {
-        used -= tail.width();
-        *tail = Span::raw(format!("   {spin} live"));
-        used += tail.width();
+    if app.frozen.is_some() {
+        right.push(Span::styled(
+            "    ‖ paused",
+            level_style(Level::Yellow, app.color),
+        ));
     }
+    // Blinks every tick so the screen visibly lives even when no call comes in.
+    let live = if app.tick.is_multiple_of(2) {
+        "●"
+    } else {
+        "○"
+    };
+    right.push(Span::styled(
+        format!("    {live}"),
+        level_style(Level::Green, app.color),
+    ));
+    let used: usize = left.iter().chain(&right).map(Span::width).sum();
     let room = usize::from(width)
         .saturating_sub(used + 2)
         .min(SPARK_BUCKETS);
@@ -148,59 +202,96 @@ fn header_line(app: &App, width: u16) -> Line<'static> {
     if room >= 6 {
         let counts = calls::buckets(recent(), app.now, SPARK_BUCKET, SPARK_BUCKETS);
         let chart = calls::sparkline(&counts[SPARK_BUCKETS - room..]);
-        let style = if app.color {
-            Style::default().fg(Color::Cyan)
-        } else {
-            Style::default()
-        };
-        spans.push(Span::styled(chart, style));
-        spans.push(Span::raw("  "));
+        spans.push(Span::styled(chart, fg(app.color, |t| t.purple)));
+        spans.push(Span::raw(" "));
     }
     spans.extend(right);
     Line::from(spans)
 }
 
 fn draw_tabs(f: &mut Frame, area: Rect, app: &App) {
-    let titles = [
-        format!("Alerts {}", app.alerts().len()),
-        "All calls".to_string(),
-        "Network".to_string(),
-        "Agents".to_string(),
-    ];
-    let selected = Tab::ALL.iter().position(|t| *t == app.tab).unwrap_or(0);
-    f.render_widget(
-        Tabs::new(titles)
-            .select(selected)
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)),
-        area,
-    );
+    let alerts = app.alerts().len();
+    let mut spans = vec![Span::raw(" ")];
+    for tab in Tab::ALL {
+        let name = match tab {
+            Tab::Alerts => "Alerts",
+            Tab::Calls => "All calls",
+            Tab::Network => "Network",
+            Tab::Agents => "Agents",
+        };
+        let style = if tab == app.tab {
+            fg(app.color, |t| t.purple).add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+        } else {
+            dim(app.color)
+        };
+        spans.push(Span::styled(name, style));
+        if tab == Tab::Alerts {
+            let count = if alerts > 0 {
+                level_style(Level::Red, app.color).add_modifier(Modifier::BOLD)
+            } else {
+                dim(app.color)
+            };
+            spans.push(Span::styled(format!(" {alerts}"), count));
+        }
+        spans.push(Span::raw("   "));
+    }
+    f.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// Key hints: the key in purple, what it does dimmed.
+fn keys_line(color: bool, lead: Option<Span<'static>>, keys: &[(&str, &str)]) -> Line<'static> {
+    let mut spans = vec![Span::raw(" ")];
+    spans.extend(lead);
+    for (k, what) in keys {
+        spans.push(Span::styled(
+            (*k).to_string(),
+            fg(color, |t| t.purple).add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(format!(" {what}  "), dim(color)));
+    }
+    Line::from(spans)
 }
 
 fn footer_line(app: &App) -> Line<'static> {
-    let text = match &app.mode {
-        Mode::Filter => format!("filter: {}_   Enter keep, Esc clear", app.filter.text),
-        Mode::ConfirmKill { pid, name } => format!("Kill {name} (pid {pid})? y/N"),
-        Mode::Detail(_) => "Esc close".to_string(),
+    let c = app.color;
+    match &app.mode {
+        Mode::Filter => Line::from(vec![
+            Span::styled(
+                format!(" filter: {}_", app.filter.text),
+                fg(c, |t| t.purple),
+            ),
+            Span::styled("   Enter keep  Esc clear", dim(c)),
+        ]),
+        Mode::ConfirmKill { pid, name } => Line::from(Span::styled(
+            format!(" Kill {name} (pid {pid})? y/N"),
+            level_style(Level::Red, c).add_modifier(Modifier::BOLD),
+        )),
+        Mode::Detail(_) => keys_line(c, None, &[("Esc", "close")]),
         Mode::Normal => {
-            let keys = match app.tab {
-                Tab::Alerts | Tab::Calls => {
-                    "space alerts/all  a group by agent  / filter  T time  p prompts  e explain"
-                }
-                Tab::Agents => "k kill  space alerts/all",
-                Tab::Network => "t trust  b block  space alerts/all",
+            let status = (!app.status.is_empty())
+                .then(|| Span::styled(format!("{}   ", app.status), fg(c, |t| t.green)));
+            let keys: &[(&str, &str)] = match app.tab {
+                Tab::Alerts | Tab::Calls => &[
+                    ("space", "alerts/all"),
+                    ("⏎", "explain"),
+                    ("w", "whitelist"),
+                    ("b", "block"),
+                    ("k", "kill"),
+                    ("a", "by agent"),
+                    ("/", "filter"),
+                    ("q", "quit"),
+                ],
+                Tab::Agents => &[("k", "kill"), ("1-4", "tabs"), ("q", "quit")],
+                Tab::Network => &[
+                    ("w", "whitelist"),
+                    ("b", "block"),
+                    ("1-4", "tabs"),
+                    ("q", "quit"),
+                ],
             };
-            let status = if app.status.is_empty() {
-                String::new()
-            } else {
-                format!("{}   ", app.status)
-            };
-            format!(" {status}{keys}  1-4 tabs  q quit")
+            keys_line(c, status, keys)
         }
-    };
-    Line::from(Span::styled(
-        text,
-        Style::default().add_modifier(Modifier::DIM),
-    ))
+    }
 }
 
 /// The full explanation of a call, over the list: both events, rule explanations and the
@@ -300,7 +391,12 @@ fn draw_detail(f: &mut Frame, body: Rect, app: &App, call: &Call) {
     f.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title(" Explain ")),
+            .style(if app.color {
+                Style::default().bg(theme::get().bg).fg(theme::get().fg)
+            } else {
+                Style::default()
+            })
+            .block(panel(app.color, true, " Explain ")),
         area,
     );
 }
@@ -380,13 +476,13 @@ mod tests {
     fn the_call_list_draws_one_row_per_call() {
         let mut app = App::new(events(), 120, false, 0);
         let s = screen(&app, 120);
-        assert!(s.contains("◆ guard ON  3 checked"), "{s}");
+        assert!(s.contains("◆ guard On  3 checked"), "{s}");
         assert!(
             s.contains("● 20s  claude") && s.contains("$ curl -d @.env"),
             "{s}"
         );
         assert!(
-            s.contains("RED Your AWS key (AKIA…4RTB) is going to"),
+            s.contains("RED  Your AWS key (AKIA…4RTB) is going to"),
             "{s}"
         );
         assert!(
@@ -450,7 +546,7 @@ mod tests {
         let b = screen(&app, 140);
         let head = |s: &str| s.lines().next().unwrap_or_default().to_string();
         assert_ne!(head(&a), head(&b));
-        assert!(head(&b).contains("last event 21s ago"), "{b}");
+        assert!(head(&a).contains("●") && head(&b).contains("○"), "{b}");
         assert!(head(&b).contains("▅█"), "{b}");
     }
 }

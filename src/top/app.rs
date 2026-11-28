@@ -212,11 +212,6 @@ impl App {
             .min()
     }
 
-    /// When the newest event was stamped.
-    pub fn last_event(&self) -> Option<u64> {
-        self.events.iter().map(|e| e.ts).max()
-    }
-
     /// Calls newest first, frozen while scrolled, grouped by agent when asked.
     fn listed(&self, keep: impl Fn(&Call, &Event) -> bool) -> Vec<Call> {
         let mut out: Vec<Call> = self
@@ -420,7 +415,7 @@ impl App {
             KeyCode::Char('a') => self.by_agent = !self.by_agent,
             KeyCode::Char('p') => self.prompts = !self.prompts,
             KeyCode::Enter | KeyCode::Char('e') => self.open_detail(),
-            KeyCode::Char(c @ ('t' | 'b')) => {
+            KeyCode::Char(c @ ('w' | 't' | 'b')) => {
                 let call = self.selected_call()?;
                 let host = self
                     .event(call.main)
@@ -429,7 +424,7 @@ impl App {
                     self.status = "This call names no host.".into();
                     return None;
                 };
-                return Some(if c == 't' {
+                return Some(if c != 'b' {
                     Action::Trust(host)
                 } else {
                     Action::Block(host)
@@ -463,10 +458,10 @@ impl App {
                     };
                 }
             }
-            (Tab::Network, KeyCode::Char(c @ ('t' | 'b'))) => {
+            (Tab::Network, KeyCode::Char(c @ ('w' | 't' | 'b'))) => {
                 let hosts = self.hosts();
                 let host = hosts.get(self.selected(hosts.len()))?.host.clone();
-                return Some(if c == 't' {
+                return Some(if c != 'b' {
                     Action::Trust(host)
                 } else {
                     Action::Block(host)
