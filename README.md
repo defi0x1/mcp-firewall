@@ -16,7 +16,7 @@ Agent Guard: risky, please confirm. Your AWS access key (AKIA...4RTB) is being s
 | | Problem | Agent Guard |
 |---|---|---|
 | 🔑 | Keys sent to a stranger | 🔴 asks you |
-| 📂 | Reading `~/.ssh`, `~/.aws`, `.env`, browser data | 🔴 asks you |
+| 📂 | Reading `~/.ssh`, `~/.aws`, `gh auth token`, browser data | 🔴 asks you |
 | 📤 | Uploads to paste sites, webhooks, raw IPs | 🔴 asks you |
 | ☁️ | Cloud metadata (`169.254.169.254`) | 🔴 asks you |
 | 🪝 | Backdoors in `~/.zshrc`, cron, `authorized_keys`, git hooks | 🔴 asks you |
