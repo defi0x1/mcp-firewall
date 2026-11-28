@@ -19,4 +19,6 @@ one-sentence explanation in the module's `RULES` list, which `guard explain` pri
 Commit subjects are short and lowercase with a type prefix, for example
 `fix: ignore public keys under ~/.ssh`.
 
-Found a way past a check? See [SECURITY.md](SECURITY.md) instead of opening an issue.
+Found a way past a check? In light mode, open a [bypass report](../../issues/new?template=bypass.md) and, if you
+can, a pull request that adds the case to `tests/bypass.rs`. Anything that gets past hardened mode or touches the
+guard itself goes privately, as [SECURITY.md](SECURITY.md) describes.

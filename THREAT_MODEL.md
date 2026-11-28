@@ -44,4 +44,5 @@ Edit tools, which the sandbox does not.
 PreToolUse and PostToolUse hooks fail closed: if the binary times out or crashes, the call is
 blocked. Reinstall from a terminal, or run `guard uninstall`, to recover.
 
-Report issues privately: [SECURITY.md](SECURITY.md).
+Light-mode parser bypasses are public bypass reports; anything past hardened mode or against the guard itself is
+reported privately. Both are described in [SECURITY.md](SECURITY.md).
