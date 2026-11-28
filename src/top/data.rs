@@ -110,13 +110,20 @@ struct Stamp {
     ts: u64,
     #[serde(default)]
     level: Option<Level>,
+    #[serde(default)]
+    source: String,
 }
 
-/// Counts of the log entries at or after `since`, read from the end of the log.
+/// Counts of the calls at or after `since`, read from the end of the log. A call logs a
+/// PreToolUse and a PostToolUse entry; the PostToolUse one counts only when it found something
+/// (a cleaned or flagged result), so a call is counted once, as in `guard top`.
 pub fn recent_counts(path: &Path, since: u64) -> io::Result<Counts> {
     let (stamps, _) = read_back(path, since, |s: &Stamp| s.ts)?;
     let mut c = Counts::default();
     for s in &stamps {
+        if s.source == "PostToolUse" && bucket(s.level) == Level::Green {
+            continue;
+        }
         c.add(s.level);
     }
     Ok(c)
@@ -454,6 +461,36 @@ mod tests {
         for e in events {
             writeln!(f, "{}", serde_json::to_string(e).unwrap()).unwrap();
         }
+    }
+
+    #[test]
+    fn the_status_line_counts_each_call_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("audit.jsonl");
+        let done = |e: Event, level: Level| Event {
+            source: "PostToolUse".into(),
+            level: Some(level),
+            ..e
+        };
+        write_log(
+            &p,
+            &[
+                ev(10, Level::Green),
+                done(ev(11, Level::Green), Level::Green),
+                ev(12, Level::Red),
+                done(ev(13, Level::Red), Level::Green),
+                // A result that had to be cleaned is its own finding.
+                done(ev(14, Level::Green), Level::Yellow),
+            ],
+        );
+        assert_eq!(
+            recent_counts(&p, 0).unwrap(),
+            Counts {
+                red: 1,
+                yellow: 1,
+                green: 1
+            }
+        );
     }
 
     #[test]
