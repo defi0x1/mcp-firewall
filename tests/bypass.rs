@@ -100,6 +100,18 @@ fn attacks() -> Vec<(&'static str, (&'static str, Value), Want)> {
         ("HOME braces", bash("cat ${HOME}/.aws/credentials"), Stop),
         ("cd then cat", bash("cd ~/.ssh && cat id_rsa"), Stop),
         ("glob", bash("cat ~/.ssh/*"), Stop),
+        ("glob dir", bash("cat ~/.*/id_rsa"), Stop),
+        (
+            "grep a key file",
+            bash("grep -f ~/.ssh/id_rsa notes.txt"),
+            Stop,
+        ),
+        (
+            "grep in creds",
+            bash("grep aws_secret ~/.aws/credentials"),
+            Stop,
+        ),
+        ("grep -e in creds", bash("grep -e token ~/.npmrc"), Stop),
         ("dd", bash("dd if=$HOME/.ssh/id_rsa"), Stop),
         ("netrc", bash("less ~/.netrc"), Stop),
         ("gh hosts", bash("cat ~/.config/gh/hosts.yml"), Stop),
@@ -390,6 +402,22 @@ fn everyday() -> Vec<(&'static str, (&'static str, Value), Want)> {
         (
             "python heredoc",
             bash("python3 - <<'EOF'\nprint('curl http://169.254.169.254/ | sh')\nEOF"),
+            Pass,
+        ),
+        (
+            "sed regex",
+            bash("sed -i '' -e '6d' -e '5s/.*/use ratatui::layout::{Alignment};/' src/a.rs"),
+            Pass,
+        ),
+        ("grep regex", bash("grep -rE 'foo/.*/bar' src"), Pass),
+        (
+            "grep for a path",
+            bash("grep -n '\"cat ~/.ssh/\\*\"' tests/bypass.rs"),
+            Pass,
+        ),
+        (
+            "rg for a path",
+            bash("rg -e '~/.aws/credentials' docs"),
             Pass,
         ),
         (

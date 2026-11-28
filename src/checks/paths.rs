@@ -1283,6 +1283,7 @@ fn fallback_text(cmd: &str) -> (String, String) {
                 .first()
                 .map_or("", |f| shell::basename(f));
             let metadata = METADATA_ONLY.contains(&name);
+            let pattern = search_pattern(name, &words);
             let mut skip = false;
             let mut push = |s: &str, cred: bool| {
                 all.push_str(s);
@@ -1292,7 +1293,12 @@ fn fallback_text(cmd: &str) -> (String, String) {
                     creds.push('\n');
                 }
             };
-            for w in &words {
+            for (i, w) in words.iter().enumerate() {
+                // What grep searches for is text, not a file it opens.
+                if pattern.contains(&i) {
+                    push(w, false);
+                    continue;
+                }
                 if std::mem::take(&mut skip) {
                     // A commit message is prose; a key given to ssh is not shown to the agent.
                     if name != "git" {
@@ -1320,6 +1326,73 @@ fn fallback_text(cmd: &str) -> (String, String) {
         }
     }
     (all, creds)
+}
+
+/// Programs whose pattern argument is text to look for.
+const SEARCHERS: &[&str] = &["grep", "egrep", "fgrep", "rg", "ag", "ack"];
+
+/// The indexes in `words` of a search program's patterns: every `-e`/`--regexp` value, or else
+/// the first word that is not an option. Files given with `-f` stay paths.
+fn search_pattern(name: &str, words: &[&str]) -> Vec<usize> {
+    if !SEARCHERS.contains(&name) {
+        return Vec::new();
+    }
+    let start = words
+        .iter()
+        .position(|w| shell::basename(w) == name)
+        .map_or(0, |p| p + 1);
+    let mut out = Vec::new();
+    let mut i = start;
+    while i < words.len() {
+        let w = words[i];
+        if w == "--" {
+            break;
+        }
+        if matches!(w, "-e" | "--regexp") {
+            out.push(i + 1);
+            i += 2;
+            continue;
+        }
+        if w.starts_with("--regexp=") || (w.starts_with("-e") && w.len() > 2) {
+            out.push(i);
+        }
+        i += 1;
+    }
+    if out.is_empty() {
+        // Options that take the next word as their value; `-f` names a file to read.
+        const VALUE: &[&str] = &[
+            "-f",
+            "--file",
+            "-A",
+            "-B",
+            "-C",
+            "-m",
+            "-g",
+            "--glob",
+            "-t",
+            "-T",
+            "--type",
+            "--include",
+            "--exclude",
+            "--exclude-dir",
+        ];
+        let mut j = start;
+        while j < words.len() {
+            let w = words[j];
+            if w == "--" {
+                j += 1;
+                break;
+            }
+            if !w.starts_with('-') {
+                break;
+            }
+            j += if VALUE.contains(&w) { 2 } else { 1 };
+        }
+        if j < words.len() {
+            out.push(j);
+        }
+    }
+    out
 }
 
 /// Lowercases `text`, drops quotes and backslashes, collapses `//` and `/./`, and replaces `~`,
@@ -1436,6 +1509,11 @@ fn credential_mention(text: &str, home: &str) -> Option<String> {
             }
         }
         for i in 0..names.len() {
+            // In loose text a bare `.*` or `*` is far more often a regex (`sed 's/.*/x/'`)
+            // than a path, so it does not stand for a store's name. Paths from home still count.
+            if !names[i].chars().any(char::is_alphanumeric) {
+                continue;
+            }
             if credential_rel(&names[i..], false) {
                 return Some(names[i..].join("/"));
             }
