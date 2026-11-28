@@ -1,6 +1,6 @@
 [package]
 name = "agent-guard"
-version = "0.3.1"
+version = "0.3.2"
 description = "A local security layer for AI coding agents: checks every tool call, keeps keys from leaking, shows what your agents send out."
 edition = "2024"
 rust-version = "1.88"
