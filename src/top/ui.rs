@@ -18,6 +18,8 @@ use crate::top::{events, network, processes};
 /// The header's chart: calls per 10 seconds over the last 10 minutes.
 const SPARK_BUCKET: u64 = 10;
 const SPARK_BUCKETS: usize = 60;
+/// At most the last 5 minutes are drawn, so the chart stays a glance and not a bar.
+const SPARK_WIDTH: usize = 30;
 
 /// A foreground color from the theme, or plain when colors are off.
 pub fn fg(color: bool, c: fn(&Theme) -> Color) -> Style {
@@ -195,9 +197,7 @@ fn header_line(app: &App, width: u16) -> Line<'static> {
         level_style(Level::Green, app.color),
     ));
     let used: usize = left.iter().chain(&right).map(Span::width).sum();
-    let room = usize::from(width)
-        .saturating_sub(used + 2)
-        .min(SPARK_BUCKETS);
+    let room = usize::from(width).saturating_sub(used + 2).min(SPARK_WIDTH);
     let mut spans = left;
     if room >= 6 {
         let counts = calls::buckets(recent(), app.now, SPARK_BUCKET, SPARK_BUCKETS);
