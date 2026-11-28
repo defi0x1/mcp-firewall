@@ -62,13 +62,21 @@ pub fn draw(f: &mut Frame, app: &App) {
             f.area(),
         );
     }
-    let [header, tabs, body, footer] = Layout::vertical([
+    // A blank line above the header keeps it off the terminal's own bars, and one below it
+    // separates it from the tabs.
+    let [_, header, _, tabs, body, footer] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(3),
         Constraint::Length(1),
     ])
     .areas(f.area());
+    let header = header.inner(ratatui::layout::Margin {
+        horizontal: 1,
+        vertical: 0,
+    });
     f.render_widget(Paragraph::new(header_line(app, header.width)), header);
     draw_tabs(f, tabs, app);
     match app.tab {
@@ -421,7 +429,7 @@ mod tests {
     use crate::audit::Event;
 
     fn screen(app: &App, width: u16) -> String {
-        let mut t = Terminal::new(TestBackend::new(width, 20)).unwrap();
+        let mut t = Terminal::new(TestBackend::new(width, 24)).unwrap();
         t.draw(|f| draw(f, app)).unwrap();
         let buf = t.backend().buffer();
         (0..buf.area.height)
@@ -544,7 +552,7 @@ mod tests {
         app.tick += 1;
         app.now += 1;
         let b = screen(&app, 140);
-        let head = |s: &str| s.lines().next().unwrap_or_default().to_string();
+        let head = |s: &str| s.lines().nth(1).unwrap_or_default().to_string();
         assert_ne!(head(&a), head(&b));
         assert!(head(&a).contains("●") && head(&b).contains("○"), "{b}");
         assert!(head(&b).contains("▅█"), "{b}");
