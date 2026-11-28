@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2
+
+- The status line counts each tool call once, matching `guard top`, instead of once when it starts and again when it ends.
+
 ## 0.4.1
 
 - Warnings about paste, webhook and tunnel sites no longer suggest whitelisting them.
