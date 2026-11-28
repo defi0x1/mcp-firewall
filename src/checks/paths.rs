@@ -62,7 +62,11 @@ pub const RULES: &[(&str, &str)] = &[
     ),
     (
         "paths.persistence",
-        "Shell startup files, git hooks and config, launch agents, cron, systemd units, editor tasks and virtualenv scripts run code later, outside the agent session; approve at the prompt if you asked for it.",
+        "Shell startup files, git hooks and config, launch agents, cron, systemd units, SSH authorized keys and the editor's home folders run code later, outside the agent session; approve at the prompt if you asked for it.",
+    ),
+    (
+        "paths.project_autorun",
+        "A project's editor settings and tasks (.vscode, .cursor) and virtualenv scripts can run code when the project is opened or used. Agents edit them often, so this only warns.",
     ),
     (
         "paths.too_complex",
@@ -339,6 +343,13 @@ fn finding(ctx: &Ctx, pl: &Places, hit: &Hit) -> Option<Finding> {
                         "This changes a file that runs code later, outside the agent session ({shown})."
                     ),
                 ),
+                Protected::ProjectAutorun => make(
+                    "paths.project_autorun",
+                    Level::Yellow,
+                    format!(
+                        "This changes a file that can run code when the project is opened or used ({shown})."
+                    ),
+                ),
                 Protected::Instructions => make(
                     "paths.agent_instructions",
                     Level::Yellow,
@@ -472,6 +483,7 @@ enum Protected {
     Guard,
     Config,
     Persistence,
+    ProjectAutorun,
     Instructions,
 }
 
@@ -511,6 +523,8 @@ fn write_hit(op: Op, p: &Path, pl: &Places) -> Option<Protected> {
     let in_home = p.parent() == Some(pl.user.as_path());
     // Any extension counts: a temp file next to the settings can be renamed over them.
     let config = name_is(name, ".mcp.json")
+        // Editors' MCP configs start servers too.
+        || ((name_is(parent, ".cursor") || name_is(parent, ".vscode")) && name_is(name, "mcp.json"))
         || (name_is(parent, ".claude") && lower.starts_with("settings"))
         || under_claude(p, &["hooks"])
         || p.starts_with(pl.user.join(".claude/plugins"))
@@ -522,6 +536,9 @@ fn write_hit(op: Op, p: &Path, pl: &Places) -> Option<Protected> {
     }
     if op == Op::Write && runs_later(p, pl) {
         return Some(Protected::Persistence);
+    }
+    if op == Op::Write && project_autorun(p) {
+        return Some(Protected::ProjectAutorun);
     }
     let memory = p
         .strip_prefix(pl.user.join(".claude/projects"))
@@ -593,6 +610,21 @@ fn runs_later(p: &Path, pl: &Places) -> bool {
         .windows(2)
         .any(|w| name_is(w[0], ".git") && name_is(w[1], "hooks"))
         || (name_is(at(1), ".git") && name_is(name, "config"));
+    // The editor's own folders in the home (`~/.vscode/extensions`) reach every project.
+    let editor_home = p
+        .strip_prefix(&pl.user)
+        .ok()
+        .and_then(|r| parts(r).first().copied())
+        .is_some_and(|n| name_is(n, ".vscode") || name_is(n, ".cursor"));
+    git || editor_home
+}
+
+/// Whether writing `p` sets up code that runs inside one project later: its editor settings
+/// and tasks, or a virtualenv's scripts. Worth a warning, but routine enough not to stop work.
+fn project_autorun(p: &Path) -> bool {
+    let names = parts(p);
+    let name = names.last().copied().unwrap_or("");
+    let at = |back: usize| names.len().checked_sub(back + 1).map_or("", |i| names[i]);
     let editor = names
         .iter()
         .any(|n| name_is(n, ".vscode") || name_is(n, ".cursor"))
@@ -604,7 +636,7 @@ fn runs_later(p: &Path, pl: &Places) -> bool {
             || p.parent()
                 .and_then(Path::parent)
                 .is_some_and(|v| v.join("pyvenv.cfg").exists()));
-    git || editor || venv
+    editor || venv
 }
 
 /// Credential files, relative to the user's home.
@@ -1673,7 +1705,7 @@ mod tests {
     #[test]
     fn rules_are_listed() {
         let ids: Vec<&str> = RULES.iter().map(|r| r.0).collect();
-        assert_eq!(ids.len(), 11);
+        assert_eq!(ids.len(), 12);
         assert!(ids.iter().all(|i| i.starts_with("paths.")));
     }
 
@@ -2114,10 +2146,8 @@ mod tests {
             "~/.config/systemd/user/x.service",
             "~/.npmrc",
             "~/.yarnrc.yml",
-            ".vscode/tasks.json",
-            ".cursor/mcp.json",
-            "app.code-workspace",
-            ".venv/bin/activate",
+            "~/.ssh/authorized_keys",
+            "~/.vscode/extensions/x/package.json",
         ] {
             only(
                 &run(&e, "Write", json!({ "file_path": p })),
@@ -2125,6 +2155,29 @@ mod tests {
                 Level::Red,
             );
         }
+        // Inside one project these only warn: agents edit them as part of normal work.
+        for p in [
+            ".vscode/tasks.json",
+            ".vscode/settings.json",
+            "app.code-workspace",
+            ".venv/bin/activate",
+        ] {
+            only(
+                &run(&e, "Write", json!({ "file_path": p })),
+                "paths.project_autorun",
+                Level::Yellow,
+            );
+        }
+        // A project's MCP config starts servers: still a prompt.
+        assert!(
+            rules(&run(
+                &e,
+                "Write",
+                json!({ "file_path": ".cursor/mcp.json" })
+            ))
+            .iter()
+            .any(|r| r.1 == Level::Red)
+        );
         all_at(
             &e,
             &[
