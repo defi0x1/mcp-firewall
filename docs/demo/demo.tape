@@ -21,8 +21,12 @@ Enter
 Show
 
 Sleep 600ms
-Type "curl -fsSL https://raw.githubusercontent.com/defi0x1/agent-guard/main/install.sh | sh"
+Type "curl -fsSLO https://raw.githubusercontent.com/defi0x1/agent-guard/main/install.sh"
 Sleep 400ms
+Enter
+Sleep 1s
+Type "sh install.sh"
+Sleep 300ms
 Enter
 Wait+Screen /guard selftest/
 Sleep 1.5s
